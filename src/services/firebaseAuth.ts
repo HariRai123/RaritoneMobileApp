@@ -19,9 +19,6 @@ const API_URL = "https://raritone-fullstack.onrender.com/api";
 const GOOGLE_WEB_CLIENT_ID =
   "8520433775-bfc9slbl382o6gqja53bb4lmfc2n5jbs.apps.googleusercontent.com";
 
-/**
- * Configure Google Sign-In once when this service is loaded.
- */
 GoogleSignin.configure({
   webClientId: GOOGLE_WEB_CLIENT_ID,
 });
@@ -40,15 +37,24 @@ export type BackendUser = {
   updatedAt?: string;
 };
 
-export async function syncUserWithBackend() {
-  if (!auth.currentUser) {
+/**
+ * Synchronize the currently authenticated Firebase user
+ * with the Raritone backend.
+ */
+export async function syncUserWithBackend(): Promise<BackendUser> {
+  const firebaseUser = auth.currentUser;
+
+  if (!firebaseUser) {
     throw new Error("No Firebase user is currently signed in");
   }
 
-  const idToken = await auth.currentUser.getIdToken(true);
+  // Get the current Firebase ID token.
+  // Firebase automatically refreshes it when necessary.
+  const idToken = await firebaseUser.getIdToken();
 
   const response = await fetch(`${API_URL}/auth/sync`, {
     method: "POST",
+
     headers: {
       Authorization: `Bearer ${idToken}`,
       Accept: "application/json",
@@ -56,15 +62,35 @@ export async function syncUserWithBackend() {
     },
   });
 
-  const data = await response.json();
+  let data: any;
+
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error(
+      `Backend returned an invalid response (${response.status})`,
+    );
+  }
 
   if (!response.ok) {
-    throw new Error(data.message || "Failed to sync user with backend");
+    console.error("Backend sync failed:", {
+      status: response.status,
+      data,
+    });
+
+    throw new Error(data?.message || "Failed to sync user with backend");
+  }
+
+  if (!data?.user) {
+    throw new Error("Backend sync response does not contain a user");
   }
 
   return data.user as BackendUser;
 }
 
+/**
+ * Sign up using Firebase email/password.
+ */
 export async function signupWithEmail(
   name: string,
   email: string,
@@ -88,6 +114,9 @@ export async function signupWithEmail(
   };
 }
 
+/**
+ * Login using Firebase email/password.
+ */
 export async function loginWithEmail(email: string, password: string) {
   const credential = await signInWithEmailAndPassword(
     auth,
@@ -123,13 +152,13 @@ export async function loginWithGoogle() {
     throw new Error("Google sign-in did not return an ID token");
   }
 
-  // Convert Google's ID token into a Firebase credential.
+  // Create Firebase credential from Google's ID token.
   const googleCredential = GoogleAuthProvider.credential(idToken);
 
-  // Sign the user into Firebase.
+  // Sign into Firebase.
   const firebaseCredential = await signInWithCredential(auth, googleCredential);
 
-  // Sync the Firebase user with MongoDB.
+  // Synchronize Firebase user with MongoDB.
   const backendUser = await syncUserWithBackend();
 
   return {
@@ -138,10 +167,12 @@ export async function loginWithGoogle() {
   };
 }
 
+/**
+ * Logout from Firebase and Google.
+ */
 export async function logoutFromFirebase() {
   await GoogleSignin.signOut().catch(() => {
-    // Ignore Google sign-out errors when the user
-    // was not signed in with Google.
+    // Google may not be signed in.
   });
 
   await signOut(auth);

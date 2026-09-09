@@ -11,6 +11,10 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 /* =========================================================
    TYPES
@@ -70,7 +74,7 @@ const COLORS = {
 };
 
 /* =========================================================
-   HERO DATA
+   DATA
 ========================================================= */
 
 const HERO_BANNERS: HeroBanner[] = [
@@ -99,10 +103,6 @@ const HERO_BANNERS: HeroBanner[] = [
     subtitle: "Styles made for\nevery moment",
   },
 ];
-
-/* =========================================================
-   CATEGORIES
-========================================================= */
 
 const CATEGORIES: Category[] = [
   {
@@ -143,10 +143,6 @@ const CATEGORIES: Category[] = [
   },
 ];
 
-/* =========================================================
-   PROMOTIONS
-========================================================= */
-
 const PROMOTIONS: Promotion[] = [
   {
     id: "1",
@@ -173,10 +169,6 @@ const PROMOTIONS: Promotion[] = [
       "https://images.unsplash.com/photo-1584917865442-de89df76afd3?auto=format&fit=crop&w=600&q=85",
   },
 ];
-
-/* =========================================================
-   PRODUCTS
-========================================================= */
 
 const PRODUCTS: Product[] = [
   {
@@ -217,10 +209,6 @@ const PRODUCTS: Product[] = [
   },
 ];
 
-/* =========================================================
-   SHOP BY STYLE
-========================================================= */
-
 const STYLES: StyleCategory[] = [
   {
     id: "1",
@@ -253,7 +241,8 @@ const STYLES: StyleCategory[] = [
 ========================================================= */
 
 export default function HomeScreen() {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
   const [currentBanner, setCurrentBanner] = useState(0);
   const [wishlist, setWishlist] = useState<string[]>([]);
@@ -261,27 +250,113 @@ export default function HomeScreen() {
   const heroRef = useRef<FlatList<HeroBanner>>(null);
 
   /* =======================================================
-     RESPONSIVE VALUES
+     RESPONSIVE BREAKPOINTS
+
+     Small       < 360
+     Standard    360 - 429
+     Large       >= 430
+     Tablet      >= 600
   ======================================================= */
 
-  const horizontalPadding = Math.max(16, width * 0.05);
+  const isSmallScreen = width < 360;
+  const isStandardScreen = width >= 360 && width < 430;
+  const isLargeScreen = width >= 430;
+  const isTablet = width >= 600;
 
-  const logoWidth = Math.min(width * 0.075, 38);
-  const logoHeight = Math.min(width * 0.075, 38);
+  /*
+   * Responsive horizontal spacing.
+   *
+   * On very small phones we never go below 14px.
+   */
+  const horizontalPadding = isSmallScreen
+    ? 14
+    : Math.min(Math.max(width * 0.05, 16), 28);
 
-  const heroWidth = width - horizontalPadding * 2;
+  /*
+   * Safe top spacing.
+   *
+   * This is important because the previous version could visually
+   * collide with the status bar on some small Android devices.
+   */
+  const topSpacing = Math.max(insets.top, 4);
 
-  const heroHeight = Math.min(Math.max(heroWidth * 0.68, 270), 360);
+  /* =======================================================
+     HEADER
+  ======================================================= */
 
-  const categorySize = Math.min(Math.max(width * 0.16, 58), 70);
+  const logoWidth = isSmallScreen ? 30 : isLargeScreen ? 40 : 36;
 
-  const productWidth = Math.min(Math.max(width * 0.41, 150), 175);
+  const logoHeight = logoWidth;
+
+  const headerIconSize = isSmallScreen ? 21 : isLargeScreen ? 24 : 23;
+
+  const headerActionSize = isSmallScreen ? 34 : 38;
+
+  /*
+   * Keep the header from becoming wider than the device.
+   */
+  const brandMaxWidth = Math.max(
+    115,
+    width - horizontalPadding * 2 - headerActionSize * 3 - 20,
+  );
+
+  /* =======================================================
+     HERO
+  ======================================================= */
+
+  const heroWidth = Math.max(1, width - horizontalPadding * 2);
+
+  const heroHeight = isTablet
+    ? Math.min(Math.max(heroWidth * 0.52, 300), 400)
+    : isSmallScreen
+      ? Math.min(Math.max(heroWidth * 0.72, 225), 280)
+      : Math.min(Math.max(heroWidth * 0.68, 255), 360);
+
+  /* =======================================================
+     CATEGORIES
+  ======================================================= */
+
+  const categorySize = isSmallScreen
+    ? 58
+    : Math.min(Math.max(width * 0.16, 60), 70);
+
+  const categoryItemWidth = categorySize + 14;
+
+  /* =======================================================
+     PRODUCTS
+  ======================================================= */
+
+  const productWidth = isTablet
+    ? 190
+    : isSmallScreen
+      ? Math.max(142, width * 0.41)
+      : Math.min(Math.max(width * 0.41, 150), 180);
 
   const productImageHeight = productWidth * 1.27;
 
-  const styleWidth = Math.min(Math.max(width * 0.38, 140), 160);
+  /* =======================================================
+     STYLES
+  ======================================================= */
+
+  const styleWidth = isTablet
+    ? 180
+    : isSmallScreen
+      ? 140
+      : Math.min(Math.max(width * 0.38, 145), 170);
 
   const styleHeight = styleWidth * 1.35;
+
+  /* =======================================================
+     PROMOTIONS
+  ======================================================= */
+
+  const promotionWidth = isTablet
+    ? 330
+    : isSmallScreen
+      ? Math.max(240, width * 0.76)
+      : Math.min(Math.max(width * 0.76, 260), 320);
+
+  const promotionHeight = isSmallScreen ? 132 : 145;
 
   /* =======================================================
      NAVIGATION
@@ -322,7 +397,9 @@ export default function HomeScreen() {
 
     const index = Math.round(offsetX / width);
 
-    setCurrentBanner(index);
+    if (index >= 0 && index < HERO_BANNERS.length) {
+      setCurrentBanner(index);
+    }
   };
 
   /* =======================================================
@@ -330,18 +407,24 @@ export default function HomeScreen() {
   ======================================================= */
 
   return (
-    <View
+    <SafeAreaView
       className="flex-1"
+      edges={["top"]}
       style={{
         backgroundColor: COLORS.background,
       }}
     >
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
+      <StatusBar
+        barStyle="dark-content"
+        backgroundColor={COLORS.background}
+        translucent={false}
+      />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
+        contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={{
-          paddingBottom: 110,
+          paddingBottom: 110 + Math.max(insets.bottom, 12),
         }}
       >
         {/* =================================================
@@ -352,8 +435,9 @@ export default function HomeScreen() {
           className="flex-row items-center justify-between"
           style={{
             paddingHorizontal: horizontalPadding,
-            paddingTop: 10,
-            paddingBottom: 12,
+            paddingTop: Math.max(4, topSpacing * 0.15),
+            paddingBottom: isSmallScreen ? 10 : 12,
+            minHeight: logoHeight + (isSmallScreen ? 16 : 20),
             backgroundColor: COLORS.background,
           }}
         >
@@ -362,33 +446,53 @@ export default function HomeScreen() {
           <Pressable
             onPress={() => router.push("/")}
             className="flex-row items-center"
+            style={{
+              maxWidth: brandMaxWidth,
+              flexShrink: 1,
+              minHeight: 44,
+            }}
+            hitSlop={6}
           >
             <Image
               source={require("../../../assets/images/raritone-logo.jpeg")}
               style={{
                 width: logoWidth,
                 height: logoHeight,
+                flexShrink: 0,
               }}
               resizeMode="contain"
             />
 
-            <View className="ml-2">
+            <View
+              className="ml-2"
+              style={{
+                flexShrink: 1,
+                minWidth: 0,
+              }}
+            >
               <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.72}
                 style={{
                   color: COLORS.text,
-                  fontSize: Math.min(width * 0.052, 21),
-                  letterSpacing: Math.min(width * 0.012, 4),
+                  fontSize: isSmallScreen ? 17 : isLargeScreen ? 21 : 19,
+                  letterSpacing: isSmallScreen ? 2 : Math.min(width * 0.012, 4),
                   fontWeight: "400",
+                  flexShrink: 1,
                 }}
               >
                 RARITONE
               </Text>
 
               <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.65}
                 style={{
                   color: COLORS.muted,
-                  fontSize: Math.min(width * 0.018, 7),
-                  letterSpacing: Math.min(width * 0.008, 3),
+                  fontSize: isSmallScreen ? 6 : 7,
+                  letterSpacing: isSmallScreen ? 1.6 : 3,
                   textAlign: "center",
                   marginTop: 1,
                 }}
@@ -400,58 +504,90 @@ export default function HomeScreen() {
 
           {/* HEADER ACTIONS */}
 
-          <View className="flex-row items-center">
+          <View
+            className="flex-row items-center"
+            style={{
+              flexShrink: 0,
+            }}
+          >
             {/* SEARCH */}
 
             <Pressable
               onPress={openShop}
               className="items-center justify-center"
               style={{
-                width: 38,
-                height: 38,
+                width: headerActionSize,
+                height: headerActionSize,
+                minWidth: 34,
+                minHeight: 34,
               }}
+              hitSlop={4}
             >
-              <Ionicons name="search-outline" size={24} color={COLORS.text} />
+              <Ionicons
+                name="search-outline"
+                size={headerIconSize}
+                color={COLORS.text}
+              />
             </Pressable>
 
             {/* WISHLIST */}
 
             <Pressable
               onPress={openShop}
-              className="ml-1 items-center justify-center"
+              className="items-center justify-center"
               style={{
-                width: 38,
-                height: 38,
+                width: headerActionSize,
+                height: headerActionSize,
+                minWidth: 34,
+                minHeight: 34,
               }}
+              hitSlop={4}
             >
-              <Ionicons name="heart-outline" size={25} color={COLORS.text} />
+              <Ionicons
+                name="heart-outline"
+                size={headerIconSize + 1}
+                color={COLORS.text}
+              />
             </Pressable>
 
             {/* CART */}
 
             <Pressable
               onPress={() => router.push("/cart")}
-              className="relative ml-1 items-center justify-center"
+              className="relative items-center justify-center"
               style={{
-                width: 38,
-                height: 38,
+                width: headerActionSize,
+                height: headerActionSize,
+                minWidth: 34,
+                minHeight: 34,
               }}
+              hitSlop={4}
             >
               <Ionicons
                 name="bag-handle-outline"
-                size={25}
+                size={headerIconSize + 1}
                 color={COLORS.text}
               />
 
               <View
-                className="absolute right-0 top-0 items-center justify-center rounded-full"
+                className="absolute items-center justify-center rounded-full"
                 style={{
-                  width: 18,
-                  height: 18,
+                  right: 0,
+                  top: 0,
+                  width: isSmallScreen ? 15 : 18,
+                  height: isSmallScreen ? 15 : 18,
                   backgroundColor: COLORS.black,
                 }}
               >
-                <Text className="text-[9px] font-bold text-white">3</Text>
+                <Text
+                  style={{
+                    color: COLORS.white,
+                    fontSize: isSmallScreen ? 8 : 9,
+                    fontWeight: "700",
+                  }}
+                >
+                  3
+                </Text>
               </View>
             </Pressable>
           </View>
@@ -463,27 +599,39 @@ export default function HomeScreen() {
 
         <Pressable
           onPress={openShop}
-          className="mx-5 mb-5 flex-row items-center rounded-full"
+          className="flex-row items-center rounded-full"
           style={{
-            minHeight: 50,
-            paddingHorizontal: 16,
+            marginHorizontal: horizontalPadding,
+            marginBottom: isSmallScreen ? 16 : 20,
+            minHeight: isSmallScreen ? 46 : 50,
+            paddingHorizontal: isSmallScreen ? 13 : 16,
             backgroundColor: COLORS.soft,
           }}
         >
-          <Ionicons name="search-outline" size={20} color={COLORS.secondary} />
+          <Ionicons
+            name="search-outline"
+            size={isSmallScreen ? 18 : 20}
+            color={COLORS.secondary}
+          />
 
           <Text
             numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.7}
             className="ml-3 flex-1"
             style={{
               color: COLORS.muted,
-              fontSize: Math.min(width * 0.038, 15),
+              fontSize: Math.min(Math.max(width * 0.038, 12), 15),
             }}
           >
             Search for products, brands and more...
           </Text>
 
-          <Ionicons name="scan-outline" size={20} color={COLORS.secondary} />
+          <Ionicons
+            name="scan-outline"
+            size={isSmallScreen ? 18 : 20}
+            color={COLORS.secondary}
+          />
         </Pressable>
 
         {/* =================================================
@@ -512,8 +660,6 @@ export default function HomeScreen() {
                   height: heroHeight,
                 }}
               >
-                {/* IMAGE */}
-
                 <Image
                   source={{
                     uri: item.image,
@@ -521,8 +667,6 @@ export default function HomeScreen() {
                   className="absolute inset-0 h-full w-full"
                   resizeMode="cover"
                 />
-
-                {/* LIGHT OVERLAY */}
 
                 <View
                   className="absolute inset-0"
@@ -537,14 +681,20 @@ export default function HomeScreen() {
                   className="absolute"
                   style={{
                     left: heroWidth * 0.07,
-                    top: heroHeight * 0.13,
+                    top: heroHeight * 0.11,
+                    maxWidth: heroWidth * 0.62,
                   }}
                 >
                   <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.75}
                     style={{
                       color: "#222222",
-                      fontSize: Math.min(width * 0.03, 12),
-                      letterSpacing: Math.min(width * 0.012, 4),
+                      fontSize: isSmallScreen ? 9 : Math.min(width * 0.03, 12),
+                      letterSpacing: isSmallScreen
+                        ? 2.2
+                        : Math.min(width * 0.012, 4),
                       fontWeight: "600",
                     }}
                   >
@@ -552,11 +702,15 @@ export default function HomeScreen() {
                   </Text>
 
                   <Text
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.72}
                     style={{
                       color: "#111111",
-                      marginTop: 14,
-                      fontSize: Math.min(width * 0.09, 39),
-                      lineHeight: Math.min(width * 0.092, 41),
+                      marginTop: isSmallScreen ? 8 : 14,
+                      fontSize: isSmallScreen ? 29 : Math.min(width * 0.09, 39),
+                      lineHeight: isSmallScreen
+                        ? 32
+                        : Math.min(width * 0.092, 41),
                       fontWeight: "300",
                     }}
                   >
@@ -564,11 +718,17 @@ export default function HomeScreen() {
                   </Text>
 
                   <Text
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.72}
                     style={{
                       color: "#333333",
-                      marginTop: 13,
-                      fontSize: Math.min(width * 0.038, 16),
-                      lineHeight: Math.min(width * 0.052, 21),
+                      marginTop: isSmallScreen ? 8 : 13,
+                      fontSize: isSmallScreen
+                        ? 13
+                        : Math.min(width * 0.038, 16),
+                      lineHeight: isSmallScreen
+                        ? 17
+                        : Math.min(width * 0.052, 21),
                     }}
                   >
                     {item.subtitle}
@@ -577,21 +737,29 @@ export default function HomeScreen() {
                   {/* SHOP BUTTON */}
 
                   <View
-                    className="mt-5 flex-row items-center rounded-full"
+                    className="mt-4 flex-row items-center rounded-full"
                     style={{
-                      paddingHorizontal: 19,
-                      paddingVertical: 12,
+                      paddingHorizontal: isSmallScreen ? 14 : 19,
+                      paddingVertical: isSmallScreen ? 9 : 12,
                       alignSelf: "flex-start",
                       backgroundColor: COLORS.black,
+                      minHeight: 40,
                     }}
                   >
-                    <Text className="mr-2 text-[13px] font-semibold text-white">
+                    <Text
+                      style={{
+                        color: COLORS.white,
+                        fontSize: isSmallScreen ? 11 : 13,
+                        fontWeight: "600",
+                        marginRight: 7,
+                      }}
+                    >
                       Shop Now
                     </Text>
 
                     <Ionicons
                       name="arrow-forward"
-                      size={16}
+                      size={isSmallScreen ? 14 : 16}
                       color={COLORS.white}
                     />
                   </View>
@@ -622,7 +790,11 @@ export default function HomeScreen() {
             CATEGORIES
         ================================================= */}
 
-        <SectionHeader title="Shop Categories" onPress={openShop} />
+        <SectionHeader
+          title="Shop Categories"
+          onPress={openShop}
+          horizontalPadding={horizontalPadding}
+        />
 
         <ScrollView
           horizontal
@@ -637,8 +809,8 @@ export default function HomeScreen() {
               onPress={openShop}
               className="items-center"
               style={{
-                width: categorySize + 12,
-                marginRight: 13,
+                width: categoryItemWidth,
+                marginRight: isSmallScreen ? 10 : 13,
               }}
             >
               <Image
@@ -656,9 +828,11 @@ export default function HomeScreen() {
 
               <Text
                 numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
                 style={{
                   color: COLORS.text,
-                  fontSize: Math.min(width * 0.03, 12),
+                  fontSize: isSmallScreen ? 10 : Math.min(width * 0.03, 12),
                   fontWeight: "500",
                   marginTop: 8,
                 }}
@@ -673,7 +847,11 @@ export default function HomeScreen() {
             PROMOTIONS
         ================================================= */}
 
-        <SectionHeader title="What's New" onPress={openShop} />
+        <SectionHeader
+          title="What's New"
+          onPress={openShop}
+          horizontalPadding={horizontalPadding}
+        />
 
         <ScrollView
           horizontal
@@ -688,19 +866,26 @@ export default function HomeScreen() {
               onPress={openShop}
               className="relative mr-3 overflow-hidden rounded-[18px]"
               style={{
-                width: Math.min(width * 0.76, 290),
-                height: 145,
+                width: promotionWidth,
+                height: promotionHeight,
                 backgroundColor: promotion.background,
               }}
             >
-              {/* TEXT */}
-
-              <View className="absolute left-5 top-5 z-10">
+              <View
+                className="absolute z-10"
+                style={{
+                  left: isSmallScreen ? 15 : 20,
+                  top: isSmallScreen ? 15 : 20,
+                  maxWidth: promotionWidth * 0.48,
+                }}
+              >
                 <Text
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
                   style={{
                     color: "#171717",
-                    fontSize: 22,
-                    lineHeight: 24,
+                    fontSize: isSmallScreen ? 19 : 22,
+                    lineHeight: isSmallScreen ? 21 : 24,
                     fontWeight: "600",
                   }}
                 >
@@ -708,9 +893,12 @@ export default function HomeScreen() {
                 </Text>
 
                 <Text
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
                   style={{
                     color: "#555555",
-                    fontSize: 12,
+                    fontSize: isSmallScreen ? 10 : 12,
                     marginTop: 6,
                   }}
                 >
@@ -718,8 +906,10 @@ export default function HomeScreen() {
                 </Text>
 
                 <View
-                  className="mt-4 h-8 w-8 items-center justify-center rounded-full"
+                  className="mt-3 items-center justify-center rounded-full"
                   style={{
+                    width: 32,
+                    height: 32,
                     backgroundColor: COLORS.black,
                   }}
                 >
@@ -730,8 +920,6 @@ export default function HomeScreen() {
                   />
                 </View>
               </View>
-
-              {/* IMAGE */}
 
               <Image
                 source={{
@@ -751,7 +939,11 @@ export default function HomeScreen() {
             TRENDING PRODUCTS
         ================================================= */}
 
-        <SectionHeader title="Trending Products" onPress={openShop} />
+        <SectionHeader
+          title="Trending Products"
+          onPress={openShop}
+          horizontalPadding={horizontalPadding}
+        />
 
         <FlatList
           data={PRODUCTS}
@@ -761,7 +953,13 @@ export default function HomeScreen() {
           contentContainerStyle={{
             paddingHorizontal: horizontalPadding,
           }}
-          ItemSeparatorComponent={() => <View style={{ width: 14 }} />}
+          ItemSeparatorComponent={() => (
+            <View
+              style={{
+                width: isSmallScreen ? 10 : 14,
+              }}
+            />
+          )}
           renderItem={({ item }) => {
             const liked = wishlist.includes(item.id);
 
@@ -802,13 +1000,14 @@ export default function HomeScreen() {
                     }}
                     className="absolute right-3 top-3 items-center justify-center rounded-full bg-white"
                     style={{
-                      width: 34,
-                      height: 34,
+                      width: isSmallScreen ? 31 : 34,
+                      height: isSmallScreen ? 31 : 34,
                     }}
+                    hitSlop={4}
                   >
                     <Ionicons
                       name={liked ? "heart" : "heart-outline"}
-                      size={19}
+                      size={isSmallScreen ? 17 : 19}
                       color={COLORS.text}
                     />
                   </Pressable>
@@ -818,9 +1017,11 @@ export default function HomeScreen() {
 
                 <Text
                   numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
                   style={{
                     color: COLORS.text,
-                    fontSize: 14,
+                    fontSize: isSmallScreen ? 13 : 14,
                     fontWeight: "500",
                     marginTop: 10,
                   }}
@@ -834,7 +1035,7 @@ export default function HomeScreen() {
                   <Text
                     style={{
                       color: COLORS.text,
-                      fontSize: 15,
+                      fontSize: isSmallScreen ? 14 : 15,
                       fontWeight: "700",
                     }}
                   >
@@ -842,10 +1043,13 @@ export default function HomeScreen() {
                   </Text>
 
                   <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.7}
                     style={{
                       color: COLORS.muted,
                       fontSize: 11,
-                      marginLeft: 7,
+                      marginLeft: 6,
                       textDecorationLine: "line-through",
                     }}
                   >
@@ -858,7 +1062,7 @@ export default function HomeScreen() {
                 <Text
                   style={{
                     color: COLORS.green,
-                    fontSize: 12,
+                    fontSize: isSmallScreen ? 11 : 12,
                     fontWeight: "600",
                     marginTop: 3,
                   }}
@@ -874,7 +1078,11 @@ export default function HomeScreen() {
             SHOP BY STYLE
         ================================================= */}
 
-        <SectionHeader title="Shop by Style" onPress={openShop} />
+        <SectionHeader
+          title="Shop by Style"
+          onPress={openShop}
+          horizontalPadding={horizontalPadding}
+        />
 
         <ScrollView
           horizontal
@@ -893,8 +1101,6 @@ export default function HomeScreen() {
                 height: styleHeight,
               }}
             >
-              {/* IMAGE */}
-
               <Image
                 source={{
                   uri: style.image,
@@ -903,8 +1109,6 @@ export default function HomeScreen() {
                 resizeMode="cover"
               />
 
-              {/* DARK IMAGE OVERLAY */}
-
               <View
                 className="absolute inset-0"
                 style={{
@@ -912,14 +1116,21 @@ export default function HomeScreen() {
                 }}
               />
 
-              {/* CONTENT */}
-
-              <View className="absolute bottom-4 left-4 right-3">
+              <View
+                className="absolute"
+                style={{
+                  bottom: 16,
+                  left: 15,
+                  right: 12,
+                }}
+              >
                 <Text
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
                   style={{
                     color: COLORS.white,
-                    fontSize: 19,
-                    lineHeight: 22,
+                    fontSize: isSmallScreen ? 16 : 19,
+                    lineHeight: isSmallScreen ? 19 : 22,
                     fontWeight: "600",
                   }}
                 >
@@ -957,25 +1168,53 @@ export default function HomeScreen() {
 
         <Pressable
           onPress={openTryOn}
-          className="mx-5 mt-8 overflow-hidden rounded-[22px]"
+          className="overflow-hidden rounded-[22px]"
           style={{
+            marginHorizontal: horizontalPadding,
+            marginTop: 32,
             backgroundColor: "#F0ECFA",
           }}
         >
-          <View className="flex-row items-center px-4 py-5">
+          <View
+            className="flex-row items-center"
+            style={{
+              paddingHorizontal: isSmallScreen ? 12 : 16,
+              paddingVertical: isSmallScreen ? 15 : 20,
+              minHeight: isSmallScreen ? 82 : 96,
+            }}
+          >
             {/* ICON */}
 
-            <View className="mr-3 h-14 w-14 items-center justify-center rounded-[17px] bg-white">
-              <Ionicons name="sparkles-outline" size={27} color="#9B4DCA" />
+            <View
+              className="items-center justify-center rounded-[17px] bg-white"
+              style={{
+                width: isSmallScreen ? 46 : 56,
+                height: isSmallScreen ? 46 : 56,
+                marginRight: isSmallScreen ? 9 : 12,
+              }}
+            >
+              <Ionicons
+                name="sparkles-outline"
+                size={isSmallScreen ? 23 : 27}
+                color="#9B4DCA"
+              />
             </View>
 
             {/* TEXT */}
 
-            <View className="flex-1">
+            <View
+              className="flex-1"
+              style={{
+                minWidth: 0,
+              }}
+            >
               <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.68}
                 style={{
                   color: "#171717",
-                  fontSize: 17,
+                  fontSize: isSmallScreen ? 14 : 17,
                   fontWeight: "700",
                 }}
               >
@@ -983,9 +1222,12 @@ export default function HomeScreen() {
               </Text>
 
               <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.65}
                 style={{
                   color: "#666666",
-                  fontSize: 11,
+                  fontSize: isSmallScreen ? 9 : 11,
                   marginTop: 3,
                 }}
               >
@@ -996,15 +1238,18 @@ export default function HomeScreen() {
             {/* BUTTON */}
 
             <View
-              className="rounded-full px-4 py-3"
+              className="items-center justify-center rounded-full"
               style={{
+                paddingHorizontal: isSmallScreen ? 11 : 16,
+                paddingVertical: isSmallScreen ? 9 : 12,
+                minHeight: 38,
                 backgroundColor: COLORS.black,
               }}
             >
               <Text
                 style={{
                   color: COLORS.white,
-                  fontSize: 12,
+                  fontSize: isSmallScreen ? 10 : 12,
                   fontWeight: "600",
                 }}
               >
@@ -1019,8 +1264,10 @@ export default function HomeScreen() {
         ================================================= */}
 
         <View
-          className="mx-5 mt-7 flex-row border-y py-5"
+          className="flex-row border-y py-5"
           style={{
+            marginHorizontal: horizontalPadding,
+            marginTop: 28,
             borderColor: COLORS.border,
           }}
         >
@@ -1036,10 +1283,17 @@ export default function HomeScreen() {
         </View>
 
         {/* =================================================
-            BOTTOM BRAND SPACE
+            BOTTOM BRAND
         ================================================= */}
 
-        <View className="items-center px-5 pb-5 pt-8">
+        <View
+          className="items-center"
+          style={{
+            paddingHorizontal: horizontalPadding,
+            paddingBottom: 20,
+            paddingTop: 32,
+          }}
+        >
           <Text
             style={{
               color: "#AAAAAA",
@@ -1062,7 +1316,7 @@ export default function HomeScreen() {
           </Text>
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -1073,23 +1327,42 @@ export default function HomeScreen() {
 function SectionHeader({
   title,
   onPress,
+  horizontalPadding,
 }: {
   title: string;
   onPress: () => void;
+  horizontalPadding: number;
 }) {
   return (
-    <View className="mt-8 mb-4 flex-row items-center justify-between px-5">
+    <View
+      className="mt-8 mb-4 flex-row items-center justify-between"
+      style={{
+        paddingHorizontal: horizontalPadding,
+      }}
+    >
       <Text
+        adjustsFontSizeToFit
+        minimumFontScale={0.72}
+        numberOfLines={1}
         style={{
-          color: "#111111",
+          color: COLORS.text,
           fontSize: 20,
           fontWeight: "700",
+          flexShrink: 1,
         }}
       >
         {title}
       </Text>
 
-      <Pressable onPress={onPress} className="flex-row items-center">
+      <Pressable
+        onPress={onPress}
+        className="ml-3 flex-row items-center"
+        style={{
+          minHeight: 36,
+          flexShrink: 0,
+        }}
+        hitSlop={6}
+      >
         <Text
           style={{
             color: "#555555",
@@ -1121,10 +1394,18 @@ function TrustItem({
   subtitle: string;
 }) {
   return (
-    <View className="flex-1 items-center">
+    <View
+      className="flex-1 items-center"
+      style={{
+        minWidth: 0,
+      }}
+    >
       <Ionicons name={icon} size={21} color="#222222" />
 
       <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
         style={{
           color: "#222222",
           fontSize: 11,
@@ -1136,6 +1417,9 @@ function TrustItem({
       </Text>
 
       <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
         style={{
           color: "#888888",
           fontSize: 9,

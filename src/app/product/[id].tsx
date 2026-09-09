@@ -2,17 +2,19 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Image,
-    ScrollView,
-    Text,
-    TouchableOpacity,
-    View,
-    useWindowDimensions,
+  ActivityIndicator,
+  Image,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
+  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
 import api from "../../services/api";
 import { useCartStore } from "../../store/cartStore";
+
 type Product = {
   _id: string;
   productId: string;
@@ -25,18 +27,61 @@ type Product = {
   discount: number;
   gender: string;
   subcategory: string;
+  description?: string;
 };
 
 export default function ProductDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { width } = useWindowDimensions();
+
   const addToCart = useCartStore((state) => state.addToCart);
+
+  const cartItems = useCartStore((state) => state.items);
+
   const [product, setProduct] = useState<Product | null>(null);
+
   const [loading, setLoading] = useState(true);
+
   const [isWishlisted, setIsWishlisted] = useState(false);
 
+  const [addedToCart, setAddedToCart] = useState(false);
+
+  // --------------------------------------------------
+  // RESPONSIVE
+  // --------------------------------------------------
+
+  const isSmallPhone = width < 360;
+  const isPhone = width < 600;
   const isTablet = width >= 768;
+  const isLargeTablet = width >= 1100;
+
+  const horizontalPadding = isSmallPhone
+    ? 16
+    : isPhone
+      ? 20
+      : isLargeTablet
+        ? 48
+        : 32;
+
+  // --------------------------------------------------
+  // CHECK IF PRODUCT IS ALREADY IN CART
+  // --------------------------------------------------
+
+  useEffect(() => {
+    if (!product) {
+      setAddedToCart(false);
+      return;
+    }
+
+    const existsInCart = cartItems.some((item) => item._id === product._id);
+
+    setAddedToCart(existsInCart);
+  }, [cartItems, product]);
+
+  // --------------------------------------------------
+  // FETCH PRODUCT
+  // --------------------------------------------------
 
   useEffect(() => {
     fetchProduct();
@@ -56,26 +101,77 @@ export default function ProductDetailsScreen() {
     }
   };
 
+  // --------------------------------------------------
+  // PRICE
+  // --------------------------------------------------
+
   const formatPrice = (price: number) => {
     return `₹${price.toLocaleString("en-IN")}`;
   };
 
+  // --------------------------------------------------
+  // ADD TO CART
+  // --------------------------------------------------
+
+  const handleAddToCart = () => {
+    if (!product || product.stock <= 0) {
+      return;
+    }
+
+    addToCart({
+      _id: product._id,
+      productId: product.productId,
+      name: product.name,
+      price: product.price,
+      image: product.image,
+      brand: product.brand,
+      stock: product.stock,
+    });
+
+    setAddedToCart(true);
+  };
+
+  // --------------------------------------------------
+  // TRY ON
+  // --------------------------------------------------
+
+  const handleTryOn = () => {
+    if (!product || product.stock <= 0) {
+      return;
+    }
+
+    router.push({
+      pathname: "/(tabs)/try-on",
+      params: {
+        productId: product._id,
+      },
+    });
+  };
+
+  // --------------------------------------------------
+  // LOADING
+  // --------------------------------------------------
+
   if (loading) {
     return (
-      <SafeAreaView className="flex-1 bg-black items-center justify-center">
-        <ActivityIndicator size="large" color="#FFFFFF" />
+      <SafeAreaView className="flex-1 bg-white items-center justify-center">
+        <ActivityIndicator size="large" color="#111111" />
       </SafeAreaView>
     );
   }
 
+  // --------------------------------------------------
+  // PRODUCT NOT FOUND
+  // --------------------------------------------------
+
   if (!product) {
     return (
-      <SafeAreaView className="flex-1 bg-black items-center justify-center px-6">
-        <View className="w-16 h-16 rounded-full bg-neutral-900 items-center justify-center">
+      <SafeAreaView className="flex-1 bg-white items-center justify-center px-6">
+        <View className="w-16 h-16 rounded-full bg-neutral-100 items-center justify-center">
           <Ionicons name="bag-outline" size={28} color="#737373" />
         </View>
 
-        <Text className="text-white text-xl font-bold mt-5">
+        <Text className="text-black text-xl font-bold mt-5">
           Product not found
         </Text>
 
@@ -85,54 +181,91 @@ export default function ProductDetailsScreen() {
 
         <TouchableOpacity
           onPress={() => router.back()}
-          className="bg-white px-7 py-3.5 rounded-full mt-7"
+          className="bg-black px-7 py-3.5 rounded-full mt-7"
         >
-          <Text className="text-black font-bold">Go Back</Text>
+          <Text className="text-white font-bold">Go Back</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
   }
 
+  // --------------------------------------------------
+  // PRODUCT DETAILS
+  // --------------------------------------------------
+
   return (
-    <SafeAreaView className="flex-1 bg-black">
+    <SafeAreaView className="flex-1 bg-white">
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
           paddingBottom: 40,
         }}
       >
-        <View className={isTablet ? "flex-row px-12 pt-8 gap-12" : "px-5 pt-4"}>
+        <View
+          className={isTablet ? "flex-row gap-10" : "w-full"}
+          style={{
+            paddingHorizontal: horizontalPadding,
+            paddingTop: isSmallPhone ? 16 : isPhone ? 20 : 32,
+          }}
+        >
+          {/* ========================================== */}
+          {/* PRODUCT IMAGE */}
+          {/* ========================================== */}
+
           <View className={isTablet ? "flex-1" : "w-full"}>
-            <View className="relative bg-neutral-900 rounded-[32px] overflow-hidden">
+            <View
+              className="relative bg-neutral-100 rounded-[32px] overflow-hidden"
+              style={{
+                maxHeight: isTablet ? 700 : undefined,
+              }}
+            >
               <Image
-                source={{ uri: product.image }}
-                className={isTablet ? "w-full h-[650px]" : "w-full h-[460px]"}
+                source={{
+                  uri: product.image,
+                }}
+                className={
+                  isTablet
+                    ? "w-full h-[650px]"
+                    : isSmallPhone
+                      ? "w-full h-[400px]"
+                      : "w-full h-[460px]"
+                }
                 resizeMode="cover"
               />
 
+              {/* IMAGE CONTROLS */}
+
               <View className="absolute top-4 left-4 right-4 flex-row justify-between">
+                {/* BACK */}
+
                 <TouchableOpacity
                   onPress={() => router.back()}
-                  className="w-11 h-11 rounded-full bg-black/60 items-center justify-center"
+                  activeOpacity={0.8}
+                  className="w-11 h-11 rounded-full bg-white/90 items-center justify-center"
                 >
-                  <Ionicons name="arrow-back" size={22} color="white" />
+                  <Ionicons name="arrow-back" size={21} color="#111111" />
                 </TouchableOpacity>
+
+                {/* WISHLIST */}
 
                 <TouchableOpacity
                   onPress={() => setIsWishlisted(!isWishlisted)}
-                  className="w-11 h-11 rounded-full bg-black/60 items-center justify-center"
+                  activeOpacity={0.8}
+                  className="w-11 h-11 rounded-full bg-white/90 items-center justify-center"
                 >
                   <Ionicons
                     name={isWishlisted ? "heart" : "heart-outline"}
                     size={22}
-                    color="white"
+                    color={isWishlisted ? "#ef4444" : "#111111"}
                   />
                 </TouchableOpacity>
               </View>
 
+              {/* DISCOUNT */}
+
               {product.discount > 0 && (
-                <View className="absolute bottom-4 left-4 bg-white px-4 py-2 rounded-full">
-                  <Text className="text-black text-xs font-bold">
+                <View className="absolute bottom-4 left-4 bg-black px-4 py-2 rounded-full">
+                  <Text className="text-white text-xs font-bold">
                     {product.discount}% OFF
                   </Text>
                 </View>
@@ -140,58 +273,82 @@ export default function ProductDetailsScreen() {
             </View>
           </View>
 
+          {/* ========================================== */}
+          {/* PRODUCT INFORMATION */}
+          {/* ========================================== */}
+
           <View className={isTablet ? "flex-1 justify-center" : "mt-7"}>
+            {/* BRAND + SUBCATEGORY */}
+
             <View className="flex-row items-center">
               <Text className="text-neutral-500 text-xs tracking-[3px]">
                 {product.brand.toUpperCase()}
               </Text>
 
-              <View className="w-1 h-1 rounded-full bg-neutral-700 mx-3" />
+              <View className="w-1 h-1 rounded-full bg-neutral-300 mx-3" />
 
               <Text className="text-neutral-500 text-xs">
                 {product.subcategory}
               </Text>
             </View>
 
+            {/* PRODUCT NAME */}
+
             <Text
               className={
                 isTablet
-                  ? "text-white text-5xl font-bold mt-4 leading-tight"
-                  : "text-white text-3xl font-bold mt-4 leading-tight"
+                  ? "text-black text-5xl font-bold mt-4 leading-tight"
+                  : isSmallPhone
+                    ? "text-black text-2xl font-bold mt-4 leading-tight"
+                    : "text-black text-3xl font-bold mt-4 leading-tight"
               }
             >
               {product.name}
             </Text>
 
+            {/* CATEGORY */}
+
             <Text className="text-neutral-500 text-sm mt-4">
               {product.category} · {product.gender}
             </Text>
+
+            {/* PRICE */}
 
             <View className="flex-row items-center mt-7">
               <Text
                 className={
                   isTablet
-                    ? "text-white text-3xl font-bold"
-                    : "text-white text-2xl font-bold"
+                    ? "text-black text-3xl font-bold"
+                    : "text-black text-2xl font-bold"
                 }
               >
                 {formatPrice(product.price)}
               </Text>
 
               {product.discount > 0 && (
-                <View className="ml-3 bg-neutral-900 rounded-full px-3 py-1.5">
-                  <Text className="text-neutral-400 text-xs">
+                <View className="ml-3 bg-neutral-100 rounded-full px-3 py-1.5">
+                  <Text className="text-neutral-600 text-xs font-medium">
                     Save {product.discount}%
                   </Text>
                 </View>
               )}
             </View>
 
-            <View className="h-px bg-neutral-900 mt-7" />
+            {/* DIVIDER */}
+
+            <View className="h-px bg-neutral-200 mt-7" />
+
+            {/* ======================================== */}
+            {/* PRODUCT META */}
+            {/* ======================================== */}
 
             <View className="flex-row mt-6">
+              {/* AVAILABILITY */}
+
               <View className="flex-1">
-                <Text className="text-neutral-500 text-xs">AVAILABILITY</Text>
+                <Text className="text-neutral-400 text-xs font-medium">
+                  AVAILABILITY
+                </Text>
 
                 <View className="flex-row items-center mt-2">
                   <View
@@ -200,7 +357,7 @@ export default function ProductDetailsScreen() {
                     }`}
                   />
 
-                  <Text className="text-white text-sm ml-2">
+                  <Text className="text-black text-sm ml-2">
                     {product.stock > 0
                       ? `${product.stock} available`
                       : "Out of stock"}
@@ -208,52 +365,59 @@ export default function ProductDetailsScreen() {
                 </View>
               </View>
 
-              <View className="flex-1">
-                <Text className="text-neutral-500 text-xs">CATEGORY</Text>
+              {/* CATEGORY */}
 
-                <Text className="text-white text-sm mt-2">
+              <View className="flex-1">
+                <Text className="text-neutral-400 text-xs font-medium">
+                  CATEGORY
+                </Text>
+
+                <Text className="text-black text-sm mt-2">
                   {product.subcategory}
                 </Text>
               </View>
             </View>
 
+            {/* ======================================== */}
+            {/* ABOUT PRODUCT */}
+            {/* ======================================== */}
+
             <View className="mt-8">
-              <Text className="text-white text-lg font-bold">
+              <Text className="text-black text-lg font-bold">
                 About this product
               </Text>
 
               <Text className="text-neutral-500 text-sm leading-6 mt-3">
-                Discover the perfect addition to your wardrobe with this
-                carefully selected Raritone product. Designed to bring
-                effortless style to your everyday look.
+                {product.description ||
+                  "Discover the perfect addition to your wardrobe with this carefully selected Raritone product. Designed to bring effortless style to your everyday look."}
               </Text>
             </View>
 
+            {/* ======================================== */}
+            {/* ACTION BUTTONS */}
+            {/* ======================================== */}
+
             <View className="mt-9">
+              {/* TRY THIS ON */}
+
               <TouchableOpacity
-                disabled={product.stock === 0}
-                onPress={() =>
-                  router.push({
-                    pathname: "/(tabs)/try-on",
-                    params: {
-                      productId: product._id,
-                    },
-                  })
-                }
+                disabled={product.stock <= 0}
+                onPress={handleTryOn}
+                activeOpacity={0.8}
                 className={`rounded-full py-4 items-center ${
-                  product.stock > 0 ? "bg-white" : "bg-neutral-800"
+                  product.stock > 0 ? "bg-black" : "bg-neutral-200"
                 }`}
               >
                 <View className="flex-row items-center">
                   <Ionicons
                     name="sparkles-outline"
                     size={19}
-                    color={product.stock > 0 ? "black" : "#737373"}
+                    color={product.stock > 0 ? "white" : "#a3a3a3"}
                   />
 
                   <Text
                     className={`font-bold text-base ml-2 ${
-                      product.stock > 0 ? "text-black" : "text-neutral-500"
+                      product.stock > 0 ? "text-white" : "text-neutral-400"
                     }`}
                   >
                     Try This On
@@ -261,41 +425,108 @@ export default function ProductDetailsScreen() {
                 </View>
               </TouchableOpacity>
 
+              {/* ADD TO CART */}
+
               <TouchableOpacity
-                disabled={product.stock === 0}
-                onPress={() =>
-                  addToCart({
-                    _id: product._id,
-                    productId: product.productId,
-                    name: product.name,
-                    price: product.price,
-                    image: product.image,
-                    brand: product.brand,
-                    stock: product.stock,
-                  })
-                }
+                disabled={product.stock <= 0}
+                onPress={handleAddToCart}
+                activeOpacity={0.8}
                 className={`border rounded-full py-4 mt-3 items-center ${
-                  product.stock > 0
-                    ? "border-neutral-700"
-                    : "border-neutral-900"
+                  product.stock <= 0
+                    ? "border-neutral-200 bg-neutral-50"
+                    : addedToCart
+                      ? "border-green-500 bg-green-50"
+                      : "border-neutral-300 bg-white"
                 }`}
               >
                 <View className="flex-row items-center">
                   <Ionicons
-                    name="bag-outline"
+                    name={addedToCart ? "checkmark-circle" : "bag-outline"}
                     size={19}
-                    color={product.stock > 0 ? "white" : "#525252"}
+                    color={
+                      product.stock <= 0
+                        ? "#a3a3a3"
+                        : addedToCart
+                          ? "#16a34a"
+                          : "#111111"
+                    }
                   />
 
                   <Text
                     className={`font-bold text-base ml-2 ${
-                      product.stock > 0 ? "text-white" : "text-neutral-600"
+                      product.stock <= 0
+                        ? "text-neutral-400"
+                        : addedToCart
+                          ? "text-green-600"
+                          : "text-black"
                     }`}
                   >
-                    Add to Cart
+                    {product.stock <= 0
+                      ? "Out of Stock"
+                      : addedToCart
+                        ? "Added to Cart ✓"
+                        : "Add to Cart"}
                   </Text>
                 </View>
               </TouchableOpacity>
+            </View>
+
+            {/* ======================================== */}
+            {/* PRODUCT BENEFITS */}
+            {/* ======================================== */}
+
+            <View className="mt-8 pt-7 border-t border-neutral-200">
+              <View className="flex-row items-start mb-5">
+                <View className="w-10 h-10 rounded-full bg-neutral-100 items-center justify-center">
+                  <Ionicons name="car-outline" size={19} color="#111111" />
+                </View>
+
+                <View className="flex-1 ml-3">
+                  <Text className="text-black text-sm font-semibold">
+                    Fast Delivery
+                  </Text>
+
+                  <Text className="text-neutral-500 text-xs mt-1 leading-5">
+                    Quick and reliable delivery to your doorstep.
+                  </Text>
+                </View>
+              </View>
+
+              <View className="flex-row items-start mb-5">
+                <View className="w-10 h-10 rounded-full bg-neutral-100 items-center justify-center">
+                  <Ionicons name="refresh-outline" size={19} color="#111111" />
+                </View>
+
+                <View className="flex-1 ml-3">
+                  <Text className="text-black text-sm font-semibold">
+                    Easy Returns
+                  </Text>
+
+                  <Text className="text-neutral-500 text-xs mt-1 leading-5">
+                    Hassle-free return experience.
+                  </Text>
+                </View>
+              </View>
+
+              <View className="flex-row items-start">
+                <View className="w-10 h-10 rounded-full bg-neutral-100 items-center justify-center">
+                  <Ionicons
+                    name="shield-checkmark-outline"
+                    size={19}
+                    color="#111111"
+                  />
+                </View>
+
+                <View className="flex-1 ml-3">
+                  <Text className="text-black text-sm font-semibold">
+                    Secure Shopping
+                  </Text>
+
+                  <Text className="text-neutral-500 text-xs mt-1 leading-5">
+                    Your shopping experience is safe and secure.
+                  </Text>
+                </View>
+              </View>
             </View>
           </View>
         </View>

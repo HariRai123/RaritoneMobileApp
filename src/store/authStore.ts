@@ -1,36 +1,54 @@
 import { create } from "zustand";
 
-type User = {
+export type User = {
   id: string;
+  firebaseUid: string;
   name: string;
-  email: string;
-  role: string;
+  email?: string;
+  phone?: string;
+  role: "user" | "admin" | "vendor";
   profileImage?: string;
+  provider: "password" | "google" | "phone";
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 type AuthStore = {
-  token: string | null;
   user: User | null;
+  isLoading: boolean;
 
-  setAuth: (token: string, user: User) => void;
+  setUser: (user: User) => void;
+  clearUser: () => void;
+  setLoading: (loading: boolean) => void;
   logout: () => void;
 };
 
 export const useAuthStore = create<AuthStore>((set) => ({
-  token: null,
   user: null,
 
-  setAuth: (token, user) => {
-    set({
-      token,
-      user,
-    });
-  },
+  isLoading: true,
 
-  logout: () => {
+  setUser: (user) =>
     set({
-      token: null,
+      user,
+      isLoading: false,
+    }),
+
+  clearUser: () =>
+    set({
       user: null,
-    });
-  },
+      isLoading: false,
+    }),
+
+  setLoading: (loading) =>
+    set({
+      isLoading: loading,
+    }),
+
+  logout: () =>
+    set({
+      user: null,
+      isLoading: false,
+    }),
 }));
