@@ -1,11 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
   Image,
+  Modal,
   Pressable,
+  ScrollView,
   Text,
   TextInput,
   View,
@@ -15,7 +17,13 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+
 import api from "../../services/api";
+import { useWishlistStore } from "../../store/wishlistStore";
+
+/* =========================================================
+   TYPES
+========================================================= */
 
 type Product = {
   _id: string;
@@ -31,7 +39,78 @@ type Product = {
   subcategory: string;
 };
 
-const CATEGORIES = ["All", "Women", "Men", "Kids", "Unisex"];
+type SortOption = "relevance" | "priceLow" | "priceHigh" | "newest";
+
+type AdvancedFilters = {
+  gender: string;
+  category: string;
+  minPrice: string;
+  maxPrice: string;
+  inStockOnly: boolean;
+  sort: SortOption;
+};
+
+/* =========================================================
+   CONSTANTS
+========================================================= */
+
+const FILTERS = [
+  "All",
+  "Women",
+  "Men",
+  "Kids",
+  "Unisex",
+  "Footwear",
+  "Bags",
+  "Accessories",
+];
+
+const GENDER_FILTERS = ["Women", "Men", "Kids", "Unisex"];
+
+const CATEGORY_FILTERS = ["Footwear", "Bags", "Accessories"];
+
+const ADVANCED_CATEGORIES = [
+  "All",
+  "Clothing",
+  "Footwear",
+  "Bags",
+  "Accessories",
+];
+
+const SORT_OPTIONS: {
+  value: SortOption;
+  label: string;
+}[] = [
+  {
+    value: "relevance",
+    label: "Relevance",
+  },
+  {
+    value: "priceLow",
+    label: "Price: Low to High",
+  },
+  {
+    value: "priceHigh",
+    label: "Price: High to Low",
+  },
+  {
+    value: "newest",
+    label: "Newest",
+  },
+];
+
+const DEFAULT_ADVANCED_FILTERS: AdvancedFilters = {
+  gender: "All",
+  category: "All",
+  minPrice: "",
+  maxPrice: "",
+  inStockOnly: false,
+  sort: "relevance",
+};
+
+/* =========================================================
+   COLORS
+========================================================= */
 
 const COLORS = {
   background: "#FFFFFF",
@@ -45,37 +124,75 @@ const COLORS = {
   white: "#FFFFFF",
   green: "#16834A",
   error: "#B42318",
+  warning: "#B54708",
 };
+
+/* =========================================================
+   SHOP SCREEN
+========================================================= */
 
 export default function ShopScreen() {
   const router = useRouter();
+
+  const { category: categoryParam, search: searchParam } =
+    useLocalSearchParams<{
+      category?: string;
+      search?: string;
+    }>();
+
   const { width } = useWindowDimensions();
+
   const insets = useSafeAreaInsets();
 
+  /* =======================================================
+     PRODUCTS
+  ======================================================= */
+
   const [products, setProducts] = useState<Product[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState("All");
-  const [search, setSearch] = useState("");
+
   const [loading, setLoading] = useState(true);
+
+  const [refreshing, setRefreshing] = useState(false);
+
   const [error, setError] = useState(false);
-  const [wishlist, setWishlist] = useState<string[]>([]);
 
   /* =======================================================
-     RESPONSIVE BREAKPOINTS
+     BASIC FILTERS
+  ======================================================= */
 
-     Small phone       < 360
-     Standard phone    360 - 429
-     Large phone       430 - 599
-     Tablet            >= 600
+  const [selectedFilter, setSelectedFilter] = useState("All");
+
+  const [search, setSearch] = useState("");
+
+  /* =======================================================
+     ADVANCED FILTER
+  ======================================================= */
+
+  const [filterVisible, setFilterVisible] = useState(false);
+
+  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>(
+    DEFAULT_ADVANCED_FILTERS,
+  );
+
+  const [temporaryFilters, setTemporaryFilters] = useState<AdvancedFilters>(
+    DEFAULT_ADVANCED_FILTERS,
+  );
+
+  /* =======================================================
+     WISHLIST
+  ======================================================= */
+
+  const wishlistItems = useWishlistStore((state) => state.items);
+
+  const toggleWishlist = useWishlistStore((state) => state.toggleWishlist);
+
+  /* =======================================================
+     RESPONSIVE
   ======================================================= */
 
   const isSmallScreen = width < 360;
-  const isStandardScreen = width >= 360 && width < 430;
-  const isLargeScreen = width >= 430;
-  const isTablet = width >= 600;
 
-  /* =======================================================
-     RESPONSIVE LAYOUT
-  ======================================================= */
+  const isTablet = width >= 600;
 
   const horizontalPadding = isTablet
     ? Math.min(width * 0.05, 40)
@@ -85,90 +202,396 @@ export default function ShopScreen() {
 
   const columnGap = isTablet ? 18 : isSmallScreen ? 10 : 12;
 
-  /*
-   * Two columns on phones.
-   *
-   * Three columns on tablets.
-   *
-   * We deliberately don't use a fixed card width so the
-   * layout adapts when the device rotates/resizes.
-   */
   const numColumns = isTablet ? 3 : 2;
 
   const cardWidth =
     (width - horizontalPadding * 2 - columnGap * (numColumns - 1)) / numColumns;
 
-  /*
-   * Responsive product image.
-   */
   const productImageHeight = isTablet
     ? cardWidth * 1.25
     : isSmallScreen
       ? cardWidth * 1.24
       : cardWidth * 1.27;
 
-  /* =======================================================
-     API
-  ======================================================= */
+  const headerTitleSize = isSmallScreen ? 28 : isTablet ? 38 : 32;
 
-  useEffect(() => {
-    fetchProducts();
-  }, []);
-
-  const fetchProducts = async () => {
-    try {
-      setLoading(true);
-      setError(false);
-
-      const response = await api.get("/products");
-
-      setProducts(response.data?.products || []);
-    } catch (err) {
-      console.error("Products fetch error:", err);
-      setError(true);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  /* =======================================================
-     FILTERING
-  ======================================================= */
-
-  const filteredProducts = useMemo(() => {
-    const searchValue = search.toLowerCase().trim();
-
-    return products.filter((product) => {
-      const matchesCategory =
-        selectedCategory === "All" || product.gender === selectedCategory;
-
-      const matchesSearch =
-        !searchValue ||
-        product.name.toLowerCase().includes(searchValue) ||
-        product.brand.toLowerCase().includes(searchValue) ||
-        product.subcategory.toLowerCase().includes(searchValue);
-
-      return matchesCategory && matchesSearch;
-    });
-  }, [products, selectedCategory, search]);
+  const headerButtonSize = isSmallScreen ? 40 : 44;
 
   /* =======================================================
      HELPERS
   ======================================================= */
 
-  const formatPrice = (price: number) => {
-    return `₹${price.toLocaleString("en-IN")}`;
-  };
+  const getDiscountedPrice = useCallback((price: number, discount: number) => {
+    if (!discount || discount <= 0) {
+      return price;
+    }
 
-  const toggleWishlist = (id: string) => {
-    setWishlist((previous) => {
-      if (previous.includes(id)) {
-        return previous.filter((item) => item !== id);
+    return Math.round(price - (price * discount) / 100);
+  }, []);
+
+  const getOldPrice = useCallback((price: number, discount: number) => {
+    if (!discount || discount <= 0 || discount >= 100) {
+      return price;
+    }
+
+    return Math.round(price / (1 - discount / 100));
+  }, []);
+
+  const formatPrice = useCallback((price: number) => {
+    return `₹${Number(price).toLocaleString("en-IN")}`;
+  }, []);
+
+  /* =======================================================
+     NORMALIZE CATEGORY
+  ======================================================= */
+
+  const normalizeFilter = useCallback((value?: string) => {
+    if (!value) {
+      return "All";
+    }
+
+    const decoded = decodeURIComponent(String(value)).trim();
+
+    const match = FILTERS.find(
+      (filter) => filter.toLowerCase() === decoded.toLowerCase(),
+    );
+
+    return match ?? "All";
+  }, []);
+
+  /* =======================================================
+     ROUTE PARAMS
+  ======================================================= */
+
+  useEffect(() => {
+    if (categoryParam !== undefined) {
+      const normalized = normalizeFilter(categoryParam);
+
+      setSelectedFilter(normalized);
+    }
+
+    if (searchParam !== undefined) {
+      setSearch(decodeURIComponent(String(searchParam)));
+    }
+  }, [categoryParam, searchParam, normalizeFilter]);
+
+  /* =======================================================
+     FETCH PRODUCTS
+  ======================================================= */
+
+  const fetchProducts = useCallback(async (showLoader = true) => {
+    try {
+      if (showLoader) {
+        setLoading(true);
       }
 
-      return [...previous, id];
+      setError(false);
+
+      const response = await api.get("/products");
+
+      const rawProducts = Array.isArray(response.data?.products)
+        ? response.data.products
+        : Array.isArray(response.data)
+          ? response.data
+          : [];
+
+      const normalizedProducts = rawProducts
+        .map(
+          (item: any): Product => ({
+            _id: String(item?._id ?? ""),
+
+            productId: String(item?.productId ?? ""),
+
+            name: String(item?.name ?? "Product"),
+
+            category: String(item?.category ?? ""),
+
+            price: Number(item?.price ?? 0),
+
+            image: String(item?.image ?? ""),
+
+            brand: String(item?.brand ?? ""),
+
+            stock: Number(item?.stock ?? 0),
+
+            discount: Number(item?.discount ?? 0),
+
+            gender: String(item?.gender ?? ""),
+
+            subcategory: String(item?.subcategory ?? ""),
+          }),
+        )
+        .filter((product: Product) =>
+          Boolean(product._id && product.name && product.image),
+        );
+
+      setProducts(normalizedProducts);
+    } catch (err) {
+      console.error("Products fetch error:", err);
+
+      setProducts([]);
+      setError(true);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchProducts();
+  }, [fetchProducts]);
+
+  /* =======================================================
+     REFRESH
+  ======================================================= */
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+
+    await fetchProducts(false);
+  }, [fetchProducts]);
+
+  /* =======================================================
+     FILTERED PRODUCTS
+  ======================================================= */
+
+  const filteredProducts = useMemo(() => {
+    const searchValue = search.toLowerCase().trim();
+
+    const minPrice = Number(advancedFilters.minPrice);
+
+    const maxPrice = Number(advancedFilters.maxPrice);
+
+    const hasMinPrice =
+      advancedFilters.minPrice.trim() !== "" && !Number.isNaN(minPrice);
+
+    const hasMaxPrice =
+      advancedFilters.maxPrice.trim() !== "" && !Number.isNaN(maxPrice);
+
+    const result = products.filter((product: Product) => {
+      /* ---------------------------------------------
+               BASIC CATEGORY FILTER
+            --------------------------------------------- */
+
+      let matchesBasicFilter = true;
+
+      if (GENDER_FILTERS.includes(selectedFilter)) {
+        matchesBasicFilter =
+          product.gender.toLowerCase() === selectedFilter.toLowerCase();
+      } else if (CATEGORY_FILTERS.includes(selectedFilter)) {
+        const selected = selectedFilter.toLowerCase();
+
+        matchesBasicFilter =
+          product.category.toLowerCase().includes(selected) ||
+          product.subcategory.toLowerCase().includes(selected);
+      }
+
+      /* ---------------------------------------------
+               ADVANCED GENDER
+            --------------------------------------------- */
+
+      const matchesGender =
+        advancedFilters.gender === "All" ||
+        product.gender.toLowerCase() === advancedFilters.gender.toLowerCase();
+
+      /* ---------------------------------------------
+               ADVANCED CATEGORY
+            --------------------------------------------- */
+
+      const matchesCategory =
+        advancedFilters.category === "All" ||
+        product.category
+          .toLowerCase()
+          .includes(advancedFilters.category.toLowerCase()) ||
+        product.subcategory
+          .toLowerCase()
+          .includes(advancedFilters.category.toLowerCase()) ||
+        (advancedFilters.category === "Clothing" &&
+          !["footwear", "bags", "accessories"].some((value) =>
+            product.category.toLowerCase().includes(value),
+          ));
+
+      /* ---------------------------------------------
+               PRICE
+            --------------------------------------------- */
+
+      const finalPrice = getDiscountedPrice(product.price, product.discount);
+
+      const matchesMinPrice = !hasMinPrice || finalPrice >= minPrice;
+
+      const matchesMaxPrice = !hasMaxPrice || finalPrice <= maxPrice;
+
+      /* ---------------------------------------------
+               STOCK
+            --------------------------------------------- */
+
+      const matchesStock = !advancedFilters.inStockOnly || product.stock > 0;
+
+      /* ---------------------------------------------
+               SEARCH
+            --------------------------------------------- */
+
+      const matchesSearch =
+        !searchValue ||
+        product.name.toLowerCase().includes(searchValue) ||
+        product.brand.toLowerCase().includes(searchValue) ||
+        product.category.toLowerCase().includes(searchValue) ||
+        product.subcategory.toLowerCase().includes(searchValue);
+
+      return (
+        matchesBasicFilter &&
+        matchesGender &&
+        matchesCategory &&
+        matchesMinPrice &&
+        matchesMaxPrice &&
+        matchesStock &&
+        matchesSearch
+      );
+    });
+
+    /* -----------------------------------------------
+         SORT
+      ----------------------------------------------- */
+
+    switch (advancedFilters.sort) {
+      case "priceLow":
+        return [...result].sort(
+          (a, b) =>
+            getDiscountedPrice(a.price, a.discount) -
+            getDiscountedPrice(b.price, b.discount),
+        );
+
+      case "priceHigh":
+        return [...result].sort(
+          (a, b) =>
+            getDiscountedPrice(b.price, b.discount) -
+            getDiscountedPrice(a.price, a.discount),
+        );
+
+      case "newest":
+        /*
+         * Backend response is already
+         * returned in newest-first order.
+         */
+        return result;
+
+      default:
+        return result;
+    }
+  }, [products, selectedFilter, search, advancedFilters, getDiscountedPrice]);
+
+  /* =======================================================
+     FILTER COUNT
+  ======================================================= */
+
+  const activeAdvancedFilterCount = useMemo(() => {
+    let count = 0;
+
+    if (advancedFilters.gender !== "All") {
+      count++;
+    }
+
+    if (advancedFilters.category !== "All") {
+      count++;
+    }
+
+    if (advancedFilters.minPrice.trim()) {
+      count++;
+    }
+
+    if (advancedFilters.maxPrice.trim()) {
+      count++;
+    }
+
+    if (advancedFilters.inStockOnly) {
+      count++;
+    }
+
+    if (advancedFilters.sort !== "relevance") {
+      count++;
+    }
+
+    return count;
+  }, [advancedFilters]);
+
+  /* =======================================================
+     FILTER ACTIONS
+  ======================================================= */
+
+  const openAdvancedFilters = () => {
+    setTemporaryFilters(advancedFilters);
+
+    setFilterVisible(true);
+  };
+
+  const closeAdvancedFilters = () => {
+    setFilterVisible(false);
+  };
+
+  const applyAdvancedFilters = () => {
+    let filters = temporaryFilters;
+
+    /*
+     * Protect against min > max.
+     */
+    if (filters.minPrice.trim() && filters.maxPrice.trim()) {
+      const min = Number(filters.minPrice);
+
+      const max = Number(filters.maxPrice);
+
+      if (!Number.isNaN(min) && !Number.isNaN(max) && min > max) {
+        filters = {
+          ...filters,
+          minPrice: filters.maxPrice,
+          maxPrice: filters.minPrice,
+        };
+      }
+    }
+
+    setAdvancedFilters(filters);
+
+    setFilterVisible(false);
+  };
+
+  const resetAdvancedFilters = () => {
+    setTemporaryFilters(DEFAULT_ADVANCED_FILTERS);
+  };
+
+  const clearFilters = () => {
+    setSelectedFilter("All");
+
+    setSearch("");
+
+    setAdvancedFilters(DEFAULT_ADVANCED_FILTERS);
+
+    setTemporaryFilters(DEFAULT_ADVANCED_FILTERS);
+  };
+
+  /* =======================================================
+     WISHLIST
+  ======================================================= */
+
+  const isWishlisted = (id: string) =>
+    wishlistItems.some((item) => item._id === id);
+
+  const handleWishlist = (item: Product) => {
+    const discountedPrice = getDiscountedPrice(item.price, item.discount);
+
+    toggleWishlist({
+      _id: item._id,
+      productId: item.productId,
+      name: item.name,
+      price: discountedPrice,
+      image: item.image,
+      brand: item.brand,
+      stock: item.stock,
+      discount: item.discount,
     });
   };
+
+  /* =======================================================
+     NAVIGATION
+  ======================================================= */
 
   const openProduct = (id: string) => {
     router.push({
@@ -180,15 +603,14 @@ export default function ShopScreen() {
   };
 
   /* =======================================================
-     HEADER
+     RESULT TITLE
   ======================================================= */
 
-  const headerTitleSize = isSmallScreen ? 28 : isTablet ? 38 : 32;
-
-  const headerButtonSize = isSmallScreen ? 40 : 44;
+  const resultTitle =
+    selectedFilter === "All" ? "Trending now" : selectedFilter;
 
   /* =======================================================
-     SCREEN
+     RENDER
   ======================================================= */
 
   return (
@@ -199,10 +621,6 @@ export default function ShopScreen() {
         backgroundColor: COLORS.background,
       }}
     >
-      {/* =================================================
-          HEADER / PRODUCT LIST
-      ================================================= */}
-
       <FlatList
         data={filteredProducts}
         numColumns={numColumns}
@@ -210,9 +628,11 @@ export default function ShopScreen() {
         keyExtractor={(item) => item._id}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        refreshing={refreshing}
+        onRefresh={handleRefresh}
         contentContainerStyle={{
           paddingHorizontal: horizontalPadding,
-          paddingBottom: 110 + Math.max(insets.bottom, 12),
+          paddingBottom: 120 + Math.max(insets.bottom, 12),
         }}
         columnWrapperStyle={
           numColumns > 1
@@ -224,13 +644,13 @@ export default function ShopScreen() {
         ListHeaderComponent={
           <View
             style={{
-              paddingTop: Math.max(insets.top * 0.08, 4),
+              paddingTop: 6,
               paddingBottom: 24,
             }}
           >
-            {/* =============================================
-                TITLE ROW
-            ============================================= */}
+            {/* ===========================================
+                HEADER
+            =========================================== */}
 
             <View
               className="flex-row items-center justify-between"
@@ -274,13 +694,8 @@ export default function ShopScreen() {
                 </Text>
               </View>
 
-              {/* FILTER BUTTON */}
-
               <Pressable
-                onPress={() => {
-                  // Filter UI can be connected here
-                  // when advanced filters are implemented.
-                }}
+                onPress={openAdvancedFilters}
                 className="items-center justify-center rounded-full"
                 style={{
                   width: headerButtonSize,
@@ -292,17 +707,42 @@ export default function ShopScreen() {
                 }}
                 hitSlop={4}
               >
-                <Ionicons
-                  name="options-outline"
-                  size={isSmallScreen ? 19 : 21}
-                  color={COLORS.text}
-                />
+                <View className="relative">
+                  <Ionicons
+                    name="options-outline"
+                    size={isSmallScreen ? 19 : 21}
+                    color={COLORS.text}
+                  />
+
+                  {activeAdvancedFilterCount > 0 && (
+                    <View
+                      className="absolute items-center justify-center rounded-full"
+                      style={{
+                        right: -7,
+                        top: -7,
+                        width: 17,
+                        height: 17,
+                        backgroundColor: COLORS.black,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: COLORS.white,
+                          fontSize: 8,
+                          fontWeight: "700",
+                        }}
+                      >
+                        {activeAdvancedFilterCount}
+                      </Text>
+                    </View>
+                  )}
+                </View>
               </Pressable>
             </View>
 
-            {/* =============================================
+            {/* ===========================================
                 SEARCH
-            ============================================= */}
+            =========================================== */}
 
             <View
               className="flex-row items-center rounded-2xl"
@@ -357,13 +797,13 @@ export default function ShopScreen() {
               )}
             </View>
 
-            {/* =============================================
-                CATEGORY FILTERS
-            ============================================= */}
+            {/* ===========================================
+                QUICK FILTERS
+            =========================================== */}
 
             <FlatList
               horizontal
-              data={CATEGORIES}
+              data={FILTERS}
               keyExtractor={(item) => item}
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{
@@ -371,11 +811,11 @@ export default function ShopScreen() {
                 paddingTop: 16,
               }}
               renderItem={({ item }) => {
-                const active = selectedCategory === item;
+                const active = selectedFilter === item;
 
                 return (
                   <Pressable
-                    onPress={() => setSelectedCategory(item)}
+                    onPress={() => setSelectedFilter(item)}
                     className="rounded-full"
                     style={{
                       paddingHorizontal: isSmallScreen ? 15 : 18,
@@ -402,9 +842,9 @@ export default function ShopScreen() {
               }}
             />
 
-            {/* =============================================
-                RESULT SUMMARY
-            ============================================= */}
+            {/* ===========================================
+                SUMMARY
+            =========================================== */}
 
             <View
               className="flex-row items-center justify-between"
@@ -423,7 +863,7 @@ export default function ShopScreen() {
                   flexShrink: 1,
                 }}
               >
-                Trending now
+                {resultTitle}
               </Text>
 
               <Text
@@ -432,7 +872,6 @@ export default function ShopScreen() {
                   color: COLORS.muted,
                   fontSize: isSmallScreen ? 11 : 12,
                   marginLeft: 10,
-                  flexShrink: 0,
                 }}
               >
                 {filteredProducts.length}{" "}
@@ -440,9 +879,148 @@ export default function ShopScreen() {
               </Text>
             </View>
 
-            {/* =============================================
-                ERROR STATE
-            ============================================= */}
+            {/* ===========================================
+                ACTIVE FILTER DISPLAY
+            =========================================== */}
+
+            {(selectedFilter !== "All" ||
+              search.length > 0 ||
+              activeAdvancedFilterCount > 0) && (
+              <View className="mt-3 flex-row flex-wrap items-center">
+                {selectedFilter !== "All" && (
+                  <View
+                    className="mr-2 mb-2 flex-row items-center rounded-full px-3 py-2"
+                    style={{
+                      backgroundColor: "#F1F1F1",
+                    }}
+                  >
+                    <Ionicons
+                      name="filter-outline"
+                      size={13}
+                      color={COLORS.secondary}
+                    />
+
+                    <Text
+                      style={{
+                        color: COLORS.secondary,
+                        fontSize: 10,
+                        fontWeight: "600",
+                        marginLeft: 5,
+                      }}
+                    >
+                      {selectedFilter}
+                    </Text>
+                  </View>
+                )}
+
+                {advancedFilters.gender !== "All" && (
+                  <View
+                    className="mr-2 mb-2 rounded-full px-3 py-2"
+                    style={{
+                      backgroundColor: "#F1F1F1",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: COLORS.secondary,
+                        fontSize: 10,
+                        fontWeight: "600",
+                      }}
+                    >
+                      {advancedFilters.gender}
+                    </Text>
+                  </View>
+                )}
+
+                {advancedFilters.category !== "All" && (
+                  <View
+                    className="mr-2 mb-2 rounded-full px-3 py-2"
+                    style={{
+                      backgroundColor: "#F1F1F1",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: COLORS.secondary,
+                        fontSize: 10,
+                        fontWeight: "600",
+                      }}
+                    >
+                      {advancedFilters.category}
+                    </Text>
+                  </View>
+                )}
+
+                {advancedFilters.inStockOnly && (
+                  <View
+                    className="mr-2 mb-2 rounded-full px-3 py-2"
+                    style={{
+                      backgroundColor: "#F1F1F1",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: COLORS.secondary,
+                        fontSize: 10,
+                        fontWeight: "600",
+                      }}
+                    >
+                      In Stock
+                    </Text>
+                  </View>
+                )}
+
+                {search.length > 0 && (
+                  <View
+                    className="mr-2 mb-2 flex-row items-center rounded-full px-3 py-2"
+                    style={{
+                      backgroundColor: "#F1F1F1",
+                      maxWidth: width * 0.65,
+                    }}
+                  >
+                    <Ionicons
+                      name="search-outline"
+                      size={12}
+                      color={COLORS.secondary}
+                    />
+
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        color: COLORS.secondary,
+                        fontSize: 10,
+                        marginLeft: 5,
+                        flexShrink: 1,
+                      }}
+                    >
+                      {search}
+                    </Text>
+                  </View>
+                )}
+
+                <Pressable
+                  onPress={clearFilters}
+                  className="mb-2 rounded-full px-3 py-2"
+                  style={{
+                    backgroundColor: COLORS.black,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: COLORS.white,
+                      fontSize: 10,
+                      fontWeight: "600",
+                    }}
+                  >
+                    Clear All
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+
+            {/* ===========================================
+                ERROR
+            =========================================== */}
 
             {error && (
               <View
@@ -485,7 +1063,7 @@ export default function ShopScreen() {
                   </View>
 
                   <Pressable
-                    onPress={fetchProducts}
+                    onPress={() => void fetchProducts()}
                     className="rounded-full"
                     style={{
                       paddingHorizontal: 13,
@@ -565,41 +1143,41 @@ export default function ShopScreen() {
                   fontSize: 12,
                   marginTop: 6,
                   textAlign: "center",
-                  lineHeight: 18,
                 }}
               >
                 Try another search or category.
               </Text>
 
-              {(search.length > 0 || selectedCategory !== "All") && (
-                <Pressable
-                  onPress={() => {
-                    setSearch("");
-                    setSelectedCategory("All");
-                  }}
-                  className="mt-5 rounded-full"
+              <Pressable
+                onPress={clearFilters}
+                className="mt-5 rounded-full"
+                style={{
+                  paddingHorizontal: 18,
+                  paddingVertical: 11,
+                  backgroundColor: COLORS.black,
+                }}
+              >
+                <Text
                   style={{
-                    paddingHorizontal: 18,
-                    paddingVertical: 11,
-                    backgroundColor: COLORS.black,
+                    color: COLORS.white,
+                    fontSize: 12,
+                    fontWeight: "600",
                   }}
                 >
-                  <Text
-                    style={{
-                      color: COLORS.white,
-                      fontSize: 12,
-                      fontWeight: "600",
-                    }}
-                  >
-                    Clear Filters
-                  </Text>
-                </Pressable>
-              )}
+                  Clear Filters
+                </Text>
+              </Pressable>
             </View>
           )
         }
         renderItem={({ item }) => {
-          const liked = wishlist.includes(item._id);
+          const liked = isWishlisted(item._id);
+
+          const discountedPrice = getDiscountedPrice(item.price, item.discount);
+
+          const oldPrice = getOldPrice(item.price, item.discount);
+
+          const hasDiscount = item.discount > 0 && oldPrice > discountedPrice;
 
           return (
             <Pressable
@@ -609,17 +1187,15 @@ export default function ShopScreen() {
                 marginBottom: isSmallScreen ? 14 : 18,
               }}
             >
-              {/* =========================================
-                  PRODUCT CARD
-              ========================================= */}
-
               <View
                 className="overflow-hidden rounded-[18px]"
                 style={{
                   backgroundColor: COLORS.card,
                 }}
               >
-                {/* PRODUCT IMAGE */}
+                {/* =====================================
+                    IMAGE
+                ===================================== */}
 
                 <View
                   className="relative overflow-hidden"
@@ -668,7 +1244,8 @@ export default function ShopScreen() {
                   <Pressable
                     onPress={(event) => {
                       event.stopPropagation();
-                      toggleWishlist(item._id);
+
+                      handleWishlist(item);
                     }}
                     className="absolute right-3 top-3 items-center justify-center rounded-full"
                     style={{
@@ -684,21 +1261,45 @@ export default function ShopScreen() {
                       color={COLORS.black}
                     />
                   </Pressable>
+
+                  {/* OUT OF STOCK */}
+
+                  {item.stock <= 0 && (
+                    <View className="absolute bottom-3 left-3 rounded-full bg-black/80 px-3 py-1.5">
+                      <Text className="text-[9px] font-bold text-white">
+                        OUT OF STOCK
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* LOW STOCK */}
+
+                  {item.stock > 0 && item.stock <= 5 && (
+                    <View className="absolute bottom-3 left-3 rounded-full bg-white/95 px-3 py-1.5">
+                      <Text
+                        style={{
+                          color: COLORS.warning,
+                          fontSize: 9,
+                          fontWeight: "700",
+                        }}
+                      >
+                        ONLY {item.stock} LEFT
+                      </Text>
+                    </View>
+                  )}
                 </View>
 
-                {/* PRODUCT INFORMATION */}
+                {/* =====================================
+                    DETAILS
+                ===================================== */}
 
                 <View
                   style={{
                     padding: isSmallScreen ? 10 : 13,
                   }}
                 >
-                  {/* BRAND */}
-
                   <Text
                     numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.75}
                     style={{
                       color: COLORS.muted,
                       fontSize: isSmallScreen ? 9 : 10,
@@ -709,8 +1310,6 @@ export default function ShopScreen() {
                   >
                     {item.brand || "Raritone"}
                   </Text>
-
-                  {/* NAME */}
 
                   <Text
                     numberOfLines={1}
@@ -726,13 +1325,9 @@ export default function ShopScreen() {
                     {item.name}
                   </Text>
 
-                  {/* SUBCATEGORY */}
-
                   {!!item.subcategory && (
                     <Text
                       numberOfLines={1}
-                      adjustsFontSizeToFit
-                      minimumFontScale={0.7}
                       style={{
                         color: COLORS.muted,
                         fontSize: isSmallScreen ? 9 : 10,
@@ -743,14 +1338,7 @@ export default function ShopScreen() {
                     </Text>
                   )}
 
-                  {/* PRICE */}
-
-                  <View
-                    className="flex-row items-center"
-                    style={{
-                      marginTop: isSmallScreen ? 8 : 10,
-                    }}
-                  >
+                  <View className="mt-2 flex-row flex-wrap items-center">
                     <Text
                       style={{
                         color: COLORS.text,
@@ -758,49 +1346,34 @@ export default function ShopScreen() {
                         fontWeight: "700",
                       }}
                     >
-                      {formatPrice(item.price)}
+                      {formatPrice(discountedPrice)}
                     </Text>
 
-                    {item.discount > 0 && (
+                    {hasDiscount && (
                       <Text
                         numberOfLines={1}
                         style={{
-                          color: COLORS.green,
+                          color: COLORS.muted,
                           fontSize: isSmallScreen ? 9 : 10,
-                          fontWeight: "600",
                           marginLeft: 6,
+                          textDecorationLine: "line-through",
                         }}
                       >
-                        Save {item.discount}%
+                        {formatPrice(oldPrice)}
                       </Text>
                     )}
                   </View>
 
-                  {/* STOCK */}
-
-                  {item.stock <= 0 && (
+                  {item.discount > 0 && (
                     <Text
                       style={{
-                        color: COLORS.error,
-                        fontSize: 9,
+                        color: COLORS.green,
+                        fontSize: isSmallScreen ? 9 : 10,
                         fontWeight: "600",
-                        marginTop: 5,
+                        marginTop: 3,
                       }}
                     >
-                      Out of stock
-                    </Text>
-                  )}
-
-                  {item.stock > 0 && item.stock <= 5 && (
-                    <Text
-                      style={{
-                        color: "#B54708",
-                        fontSize: 9,
-                        fontWeight: "500",
-                        marginTop: 5,
-                      }}
-                    >
-                      Only {item.stock} left
+                      Save {item.discount}%
                     </Text>
                   )}
                 </View>
@@ -809,6 +1382,541 @@ export default function ShopScreen() {
           );
         }}
       />
+
+      {/* ===================================================
+          ADVANCED FILTER MODAL
+      =================================================== */}
+
+      <Modal
+        visible={filterVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={closeAdvancedFilters}
+      >
+        <View
+          className="flex-1 justify-end"
+          style={{
+            backgroundColor: "rgba(0,0,0,0.45)",
+          }}
+        >
+          {/* BACKDROP */}
+
+          <Pressable
+            onPress={closeAdvancedFilters}
+            style={{
+              flex: 1,
+            }}
+          />
+
+          {/* SHEET */}
+
+          <View
+            className="rounded-t-[28px]"
+            style={{
+              maxHeight: isTablet ? 720 : "90%",
+              backgroundColor: COLORS.white,
+            }}
+          >
+            {/* =============================================
+                MODAL HEADER
+            ============================================= */}
+
+            <View
+              className="flex-row items-center justify-between border-b"
+              style={{
+                paddingHorizontal: horizontalPadding,
+                paddingVertical: 18,
+                borderColor: COLORS.border,
+              }}
+            >
+              <View>
+                <Text
+                  style={{
+                    color: COLORS.text,
+                    fontSize: 21,
+                    fontWeight: "700",
+                  }}
+                >
+                  Filters
+                </Text>
+
+                <Text
+                  style={{
+                    color: COLORS.muted,
+                    fontSize: 11,
+                    marginTop: 3,
+                  }}
+                >
+                  Refine your fashion search
+                </Text>
+              </View>
+
+              <Pressable
+                onPress={closeAdvancedFilters}
+                className="items-center justify-center rounded-full"
+                style={{
+                  width: 38,
+                  height: 38,
+                  backgroundColor: COLORS.soft,
+                }}
+                hitSlop={4}
+              >
+                <Ionicons name="close" size={20} color={COLORS.text} />
+              </Pressable>
+            </View>
+
+            {/* =============================================
+                MODAL CONTENT
+            ============================================= */}
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{
+                padding: horizontalPadding,
+                paddingBottom: 32,
+              }}
+            >
+              {/* =========================================
+                  GENDER
+              ========================================= */}
+
+              <Text
+                style={{
+                  color: COLORS.text,
+                  fontSize: 14,
+                  fontWeight: "700",
+                  marginBottom: 11,
+                }}
+              >
+                Gender
+              </Text>
+
+              <View className="flex-row flex-wrap">
+                {["All", ...GENDER_FILTERS].map((gender) => {
+                  const active = temporaryFilters.gender === gender;
+
+                  return (
+                    <Pressable
+                      key={gender}
+                      onPress={() =>
+                        setTemporaryFilters((prev) => ({
+                          ...prev,
+                          gender,
+                        }))
+                      }
+                      className="mr-2 mb-2 rounded-full"
+                      style={{
+                        paddingHorizontal: 15,
+                        paddingVertical: 10,
+                        backgroundColor: active ? COLORS.black : COLORS.soft,
+                        borderWidth: active ? 0 : 1,
+                        borderColor: COLORS.border,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: active ? COLORS.white : COLORS.secondary,
+                          fontSize: 11,
+                          fontWeight: "600",
+                        }}
+                      >
+                        {gender}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              {/* =========================================
+                  CATEGORY
+              ========================================= */}
+
+              <Text
+                style={{
+                  color: COLORS.text,
+                  fontSize: 14,
+                  fontWeight: "700",
+                  marginTop: 20,
+                  marginBottom: 11,
+                }}
+              >
+                Category
+              </Text>
+
+              <View className="flex-row flex-wrap">
+                {ADVANCED_CATEGORIES.map((category) => {
+                  const active = temporaryFilters.category === category;
+
+                  return (
+                    <Pressable
+                      key={category}
+                      onPress={() =>
+                        setTemporaryFilters((prev) => ({
+                          ...prev,
+                          category,
+                        }))
+                      }
+                      className="mr-2 mb-2 rounded-full"
+                      style={{
+                        paddingHorizontal: 15,
+                        paddingVertical: 10,
+                        backgroundColor: active ? COLORS.black : COLORS.soft,
+                        borderWidth: active ? 0 : 1,
+                        borderColor: COLORS.border,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: active ? COLORS.white : COLORS.secondary,
+                          fontSize: 11,
+                          fontWeight: "600",
+                        }}
+                      >
+                        {category}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              {/* =========================================
+                  PRICE
+              ========================================= */}
+
+              <Text
+                style={{
+                  color: COLORS.text,
+                  fontSize: 14,
+                  fontWeight: "700",
+                  marginTop: 20,
+                  marginBottom: 11,
+                }}
+              >
+                Price Range
+              </Text>
+
+              <View className="flex-row">
+                <View
+                  className="flex-1 rounded-xl"
+                  style={{
+                    borderWidth: 1,
+                    borderColor: COLORS.border,
+                    marginRight: 6,
+                  }}
+                >
+                  <TextInput
+                    value={temporaryFilters.minPrice}
+                    onChangeText={(value) => {
+                      setTemporaryFilters((prev) => ({
+                        ...prev,
+                        minPrice: value.replace(/[^0-9]/g, ""),
+                      }));
+                    }}
+                    placeholder="Min price"
+                    placeholderTextColor={COLORS.muted}
+                    keyboardType="number-pad"
+                    style={{
+                      color: COLORS.text,
+                      fontSize: 13,
+                      paddingHorizontal: 13,
+                      paddingVertical: 12,
+                    }}
+                  />
+                </View>
+
+                <View
+                  className="flex-1 rounded-xl"
+                  style={{
+                    borderWidth: 1,
+                    borderColor: COLORS.border,
+                    marginLeft: 6,
+                  }}
+                >
+                  <TextInput
+                    value={temporaryFilters.maxPrice}
+                    onChangeText={(value) => {
+                      setTemporaryFilters((prev) => ({
+                        ...prev,
+                        maxPrice: value.replace(/[^0-9]/g, ""),
+                      }));
+                    }}
+                    placeholder="Max price"
+                    placeholderTextColor={COLORS.muted}
+                    keyboardType="number-pad"
+                    style={{
+                      color: COLORS.text,
+                      fontSize: 13,
+                      paddingHorizontal: 13,
+                      paddingVertical: 12,
+                    }}
+                  />
+                </View>
+              </View>
+
+              {/* =========================================
+                  QUICK PRICE RANGES
+              ========================================= */}
+
+              <View className="mt-3 flex-row flex-wrap">
+                {[
+                  {
+                    label: "Under ₹1,000",
+                    min: "",
+                    max: "1000",
+                  },
+                  {
+                    label: "₹1,000 - ₹2,500",
+                    min: "1000",
+                    max: "2500",
+                  },
+                  {
+                    label: "₹2,500 - ₹5,000",
+                    min: "2500",
+                    max: "5000",
+                  },
+                  {
+                    label: "Above ₹5,000",
+                    min: "5000",
+                    max: "",
+                  },
+                ].map((range) => {
+                  const active =
+                    temporaryFilters.minPrice === range.min &&
+                    temporaryFilters.maxPrice === range.max;
+
+                  return (
+                    <Pressable
+                      key={range.label}
+                      onPress={() =>
+                        setTemporaryFilters((prev) => ({
+                          ...prev,
+                          minPrice: range.min,
+                          maxPrice: range.max,
+                        }))
+                      }
+                      className="mr-2 mb-2 rounded-full"
+                      style={{
+                        paddingHorizontal: 12,
+                        paddingVertical: 9,
+                        backgroundColor: active ? "#EDEDED" : COLORS.white,
+                        borderWidth: 1,
+                        borderColor: active ? COLORS.black : COLORS.border,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: COLORS.secondary,
+                          fontSize: 10,
+                          fontWeight: active ? "700" : "500",
+                        }}
+                      >
+                        {range.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              {/* =========================================
+                  AVAILABILITY
+              ========================================= */}
+
+              <Text
+                style={{
+                  color: COLORS.text,
+                  fontSize: 14,
+                  fontWeight: "700",
+                  marginTop: 20,
+                  marginBottom: 11,
+                }}
+              >
+                Availability
+              </Text>
+
+              <Pressable
+                onPress={() =>
+                  setTemporaryFilters((prev) => ({
+                    ...prev,
+                    inStockOnly: !prev.inStockOnly,
+                  }))
+                }
+                className="flex-row items-center justify-between rounded-2xl"
+                style={{
+                  paddingHorizontal: 14,
+                  paddingVertical: 13,
+                  backgroundColor: COLORS.soft,
+                }}
+              >
+                <View className="flex-row items-center">
+                  <Ionicons
+                    name="checkmark-circle-outline"
+                    size={21}
+                    color={
+                      temporaryFilters.inStockOnly
+                        ? COLORS.black
+                        : COLORS.secondary
+                    }
+                  />
+
+                  <View className="ml-3">
+                    <Text
+                      style={{
+                        color: COLORS.text,
+                        fontSize: 12,
+                        fontWeight: "600",
+                      }}
+                    >
+                      In stock only
+                    </Text>
+
+                    <Text
+                      style={{
+                        color: COLORS.muted,
+                        fontSize: 10,
+                        marginTop: 2,
+                      }}
+                    >
+                      Hide unavailable products
+                    </Text>
+                  </View>
+                </View>
+
+                <View
+                  className="items-center justify-center rounded-full"
+                  style={{
+                    width: 24,
+                    height: 24,
+                    backgroundColor: temporaryFilters.inStockOnly
+                      ? COLORS.black
+                      : "#DDDDDD",
+                  }}
+                >
+                  {temporaryFilters.inStockOnly && (
+                    <Ionicons name="checkmark" size={15} color={COLORS.white} />
+                  )}
+                </View>
+              </Pressable>
+
+              {/* =========================================
+                  SORT
+              ========================================= */}
+
+              <Text
+                style={{
+                  color: COLORS.text,
+                  fontSize: 14,
+                  fontWeight: "700",
+                  marginTop: 20,
+                  marginBottom: 11,
+                }}
+              >
+                Sort By
+              </Text>
+
+              {SORT_OPTIONS.map((option) => {
+                const active = temporaryFilters.sort === option.value;
+
+                return (
+                  <Pressable
+                    key={option.value}
+                    onPress={() =>
+                      setTemporaryFilters((prev) => ({
+                        ...prev,
+                        sort: option.value,
+                      }))
+                    }
+                    className="mb-2 flex-row items-center justify-between rounded-xl"
+                    style={{
+                      paddingHorizontal: 14,
+                      paddingVertical: 13,
+                      borderWidth: 1,
+                      borderColor: active ? COLORS.black : COLORS.border,
+                      backgroundColor: active ? "#F5F5F5" : COLORS.white,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: COLORS.text,
+                        fontSize: 12,
+                        fontWeight: active ? "700" : "500",
+                      }}
+                    >
+                      {option.label}
+                    </Text>
+
+                    {active && (
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={19}
+                        color={COLORS.black}
+                      />
+                    )}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            {/* =============================================
+                MODAL FOOTER
+            ============================================= */}
+
+            <View
+              className="flex-row border-t"
+              style={{
+                paddingHorizontal: horizontalPadding,
+                paddingTop: 13,
+                paddingBottom: Math.max(insets.bottom, 12) + 4,
+                borderColor: COLORS.border,
+                backgroundColor: COLORS.white,
+              }}
+            >
+              <Pressable
+                onPress={resetAdvancedFilters}
+                className="items-center justify-center rounded-full"
+                style={{
+                  flex: 1,
+                  minHeight: 48,
+                  borderWidth: 1,
+                  borderColor: COLORS.border,
+                  marginRight: 6,
+                }}
+              >
+                <Text
+                  style={{
+                    color: COLORS.text,
+                    fontSize: 12,
+                    fontWeight: "600",
+                  }}
+                >
+                  Reset
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={applyAdvancedFilters}
+                className="items-center justify-center rounded-full"
+                style={{
+                  flex: 1.5,
+                  minHeight: 48,
+                  backgroundColor: COLORS.black,
+                  marginLeft: 6,
+                }}
+              >
+                <Text
+                  style={{
+                    color: COLORS.white,
+                    fontSize: 12,
+                    fontWeight: "700",
+                  }}
+                >
+                  Show {filteredProducts.length} Products
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

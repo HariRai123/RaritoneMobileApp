@@ -1,7 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { ImageSourcePropType } from "react-native";
 import {
+  ActivityIndicator,
   FlatList,
   Image,
   Pressable,
@@ -16,16 +18,17 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 
+import api from "../../services/api";
+import { useCartStore } from "../../store/cartStore";
+import { useWishlistStore } from "../../store/wishlistStore";
+
 /* =========================================================
    TYPES
 ========================================================= */
 
 type HeroBanner = {
   id: string;
-  image: string;
-  eyebrow: string;
-  title: string;
-  subtitle: string;
+  image: ImageSourcePropType;
 };
 
 type Category = {
@@ -44,11 +47,18 @@ type Promotion = {
 
 type Product = {
   id: string;
+  productId: string;
   name: string;
   price: number;
   oldPrice: number;
   discount: string;
+  discountPercent: number;
   image: string;
+  brand: string;
+  stock: number;
+  gender: string;
+  category: string;
+  subcategory: string;
 };
 
 type StyleCategory = {
@@ -74,74 +84,78 @@ const COLORS = {
 };
 
 /* =========================================================
-   DATA
+   HERO BANNERS
 ========================================================= */
 
 const HERO_BANNERS: HeroBanner[] = [
   {
     id: "1",
-    image:
-      "https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&w=1400&q=85",
-    eyebrow: "NEW COLLECTION",
-    title: "Modern\nTradition",
-    subtitle: "Timeless styles for\nthe new you",
+    image: require("../../../assets/images/banner1.png"),
   },
   {
     id: "2",
-    image:
-      "https://images.unsplash.com/photo-1617627143750-d86bc21e42bb?auto=format&fit=crop&w=1400&q=85",
-    eyebrow: "FESTIVE EDIT",
-    title: "Celebrate\nIn Style",
-    subtitle: "Discover the latest\nfestive collection",
+    image: require("../../../assets/images/banner2.png"),
   },
   {
     id: "3",
-    image:
-      "https://images.unsplash.com/photo-1583391733956-6c78276477e2?auto=format&fit=crop&w=1400&q=85",
-    eyebrow: "NEW ARRIVALS",
-    title: "Everyday\nElegance",
-    subtitle: "Styles made for\nevery moment",
+    image: require("../../../assets/images/banner3.png"),
+  },
+  {
+    id: "4",
+    image: require("../../../assets/images/banner4.png"),
+  },
+  {
+    id: "5",
+    image: require("../../../assets/images/banner5.png"),
   },
 ];
 
+/* =========================================================
+   CATEGORIES
+========================================================= */
+
 const CATEGORIES: Category[] = [
   {
-    id: "1",
+    id: "women",
     name: "Women",
     image:
       "https://images.unsplash.com/photo-1539109136881-3be0616acf4b?auto=format&fit=crop&w=400&q=85",
   },
   {
-    id: "2",
+    id: "men",
     name: "Men",
     image:
       "https://images.unsplash.com/photo-1617127365659-c47fa864d8bc?auto=format&fit=crop&w=400&q=85",
   },
   {
-    id: "3",
+    id: "kids",
     name: "Kids",
     image:
       "https://images.unsplash.com/photo-1503919545889-aef636e10ad4?auto=format&fit=crop&w=400&q=85",
   },
   {
-    id: "4",
+    id: "footwear",
     name: "Footwear",
     image:
       "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=400&q=85",
   },
   {
-    id: "5",
+    id: "bags",
     name: "Bags",
     image:
       "https://images.unsplash.com/photo-1584917865442-de89df76afd3?auto=format&fit=crop&w=400&q=85",
   },
   {
-    id: "6",
+    id: "accessories",
     name: "Accessories",
     image:
       "https://images.unsplash.com/photo-1511499767150-a48a237f0083?auto=format&fit=crop&w=400&q=85",
   },
 ];
+
+/* =========================================================
+   PROMOTIONS
+========================================================= */
 
 const PROMOTIONS: Promotion[] = [
   {
@@ -170,44 +184,9 @@ const PROMOTIONS: Promotion[] = [
   },
 ];
 
-const PRODUCTS: Product[] = [
-  {
-    id: "1",
-    name: "Ribbed Crop Top",
-    price: 799,
-    oldPrice: 1199,
-    discount: "33% OFF",
-    image:
-      "https://images.unsplash.com/photo-1564257577054-3e5ab1b5f0f6?auto=format&fit=crop&w=700&q=85",
-  },
-  {
-    id: "2",
-    name: "Oversized T-Shirt",
-    price: 899,
-    oldPrice: 1299,
-    discount: "31% OFF",
-    image:
-      "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=700&q=85",
-  },
-  {
-    id: "3",
-    name: "Classic Sneakers",
-    price: 2499,
-    oldPrice: 3499,
-    discount: "29% OFF",
-    image:
-      "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=700&q=85",
-  },
-  {
-    id: "4",
-    name: "Structured Handbag",
-    price: 1899,
-    oldPrice: 2999,
-    discount: "37% OFF",
-    image:
-      "https://images.unsplash.com/photo-1584917865442-de89df76afd3?auto=format&fit=crop&w=700&q=85",
-  },
-];
+/* =========================================================
+   SHOP BY STYLE
+========================================================= */
 
 const STYLES: StyleCategory[] = [
   {
@@ -241,44 +220,42 @@ const STYLES: StyleCategory[] = [
 ========================================================= */
 
 export default function HomeScreen() {
-  const { width, height } = useWindowDimensions();
+  const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
   const [currentBanner, setCurrentBanner] = useState(0);
-  const [wishlist, setWishlist] = useState<string[]>([]);
+
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(true);
+  const [productError, setProductError] = useState("");
 
   const heroRef = useRef<FlatList<HeroBanner>>(null);
 
   /* =======================================================
-     RESPONSIVE BREAKPOINTS
+     CART
+  ======================================================= */
 
-     Small       < 360
-     Standard    360 - 429
-     Large       >= 430
-     Tablet      >= 600
+  const totalCartItems = useCartStore((state) => state.getTotalItems());
+
+  /* =======================================================
+     WISHLIST
+  ======================================================= */
+
+  const wishlistItems = useWishlistStore((state) => state.items);
+
+  const toggleWishlist = useWishlistStore((state) => state.toggleWishlist);
+
+  /* =======================================================
+     RESPONSIVE
   ======================================================= */
 
   const isSmallScreen = width < 360;
-  const isStandardScreen = width >= 360 && width < 430;
   const isLargeScreen = width >= 430;
   const isTablet = width >= 600;
 
-  /*
-   * Responsive horizontal spacing.
-   *
-   * On very small phones we never go below 14px.
-   */
   const horizontalPadding = isSmallScreen
     ? 14
     : Math.min(Math.max(width * 0.05, 16), 28);
-
-  /*
-   * Safe top spacing.
-   *
-   * This is important because the previous version could visually
-   * collide with the status bar on some small Android devices.
-   */
-  const topSpacing = Math.max(insets.top, 4);
 
   /* =======================================================
      HEADER
@@ -292,9 +269,6 @@ export default function HomeScreen() {
 
   const headerActionSize = isSmallScreen ? 34 : 38;
 
-  /*
-   * Keep the header from becoming wider than the device.
-   */
   const brandMaxWidth = Math.max(
     115,
     width - horizontalPadding * 2 - headerActionSize * 3 - 20,
@@ -306,11 +280,9 @@ export default function HomeScreen() {
 
   const heroWidth = Math.max(1, width - horizontalPadding * 2);
 
-  const heroHeight = isTablet
-    ? Math.min(Math.max(heroWidth * 0.52, 300), 400)
-    : isSmallScreen
-      ? Math.min(Math.max(heroWidth * 0.72, 225), 280)
-      : Math.min(Math.max(heroWidth * 0.68, 255), 360);
+  const heroAspectRatio = 1.75;
+
+  const heroHeight = Math.max(1, heroWidth / heroAspectRatio);
 
   /* =======================================================
      CATEGORIES
@@ -366,8 +338,21 @@ export default function HomeScreen() {
     router.push("/(tabs)/shop");
   };
 
+  const openCategory = (category: string) => {
+    router.push({
+      pathname: "/(tabs)/shop",
+      params: {
+        category,
+      },
+    });
+  };
+
   const openProduct = (id: string) => {
     router.push(`/product/${id}`);
+  };
+
+  const openWishlist = () => {
+    router.push("/wishlist");
   };
 
   const openTryOn = () => {
@@ -375,31 +360,126 @@ export default function HomeScreen() {
   };
 
   /* =======================================================
-     WISHLIST
+     FETCH PRODUCTS
   ======================================================= */
 
-  const toggleWishlist = (id: string) => {
-    setWishlist((previous) => {
-      if (previous.includes(id)) {
-        return previous.filter((item) => item !== id);
-      }
+  useEffect(() => {
+    let mounted = true;
 
-      return [...previous, id];
-    });
-  };
+    const fetchProducts = async () => {
+      try {
+        if (!mounted) {
+          return;
+        }
+
+        setLoadingProducts(true);
+        setProductError("");
+
+        const response = await api.get("/products");
+
+        const rawProducts = Array.isArray(response.data?.products)
+          ? response.data.products
+          : Array.isArray(response.data)
+            ? response.data
+            : [];
+
+        const mappedProducts: Product[] = rawProducts
+          .map((item: any) => {
+            const price = Number(item?.price ?? 0);
+
+            const discountPercent = Number(item?.discount ?? 0);
+
+            const oldPrice =
+              discountPercent > 0 && discountPercent < 100
+                ? Math.round(price / (1 - discountPercent / 100))
+                : price;
+
+            return {
+              id: String(item?._id ?? item?.productId ?? ""),
+              productId: String(item?.productId ?? ""),
+              name: String(item?.name ?? "Product"),
+              price,
+              oldPrice,
+              discount: discountPercent > 0 ? `${discountPercent}% OFF` : "",
+              discountPercent,
+              image: String(item?.image ?? ""),
+              brand: String(item?.brand ?? ""),
+              stock: Number(item?.stock ?? 0),
+              gender: String(item?.gender ?? ""),
+              category: String(item?.category ?? ""),
+              subcategory: String(item?.subcategory ?? ""),
+            };
+          })
+          .filter((item: Product) =>
+            Boolean(item.id && item.name && item.image),
+          );
+
+        if (!mounted) {
+          return;
+        }
+
+        setProducts(mappedProducts);
+      } catch (error: any) {
+        console.error("Home products fetch error:", error);
+
+        if (!mounted) {
+          return;
+        }
+
+        setProducts([]);
+
+        setProductError(
+          error?.response?.data?.message ||
+            error?.message ||
+            "Unable to load products.",
+        );
+      } finally {
+        if (mounted) {
+          setLoadingProducts(false);
+        }
+      }
+    };
+
+    void fetchProducts();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   /* =======================================================
      HERO SCROLL
   ======================================================= */
 
   const handleHeroScroll = (event: any) => {
-    const offsetX = event.nativeEvent.contentOffset.x;
+    const offsetX = event?.nativeEvent?.contentOffset?.x ?? 0;
 
     const index = Math.round(offsetX / width);
 
     if (index >= 0 && index < HERO_BANNERS.length) {
       setCurrentBanner(index);
     }
+  };
+
+  /* =======================================================
+     WISHLIST
+  ======================================================= */
+
+  const isProductWishlisted = (id: string) => {
+    return wishlistItems.some((wishlistItem) => wishlistItem._id === id);
+  };
+
+  const handleWishlistToggle = (item: Product) => {
+    toggleWishlist({
+      _id: item.id,
+      productId: item.productId,
+      name: item.name,
+      price: item.price,
+      image: item.image,
+      brand: item.brand,
+      stock: item.stock,
+      discount: item.discountPercent,
+    });
   };
 
   /* =======================================================
@@ -435,14 +515,12 @@ export default function HomeScreen() {
           className="flex-row items-center justify-between"
           style={{
             paddingHorizontal: horizontalPadding,
-            paddingTop: Math.max(4, topSpacing * 0.15),
+            paddingTop: Math.max(4, Math.max(insets.top, 4) * 0.15),
             paddingBottom: isSmallScreen ? 10 : 12,
             minHeight: logoHeight + (isSmallScreen ? 16 : 20),
             backgroundColor: COLORS.background,
           }}
         >
-          {/* BRAND */}
-
           <Pressable
             onPress={() => router.push("/")}
             className="flex-row items-center"
@@ -502,8 +580,6 @@ export default function HomeScreen() {
             </View>
           </Pressable>
 
-          {/* HEADER ACTIONS */}
-
           <View
             className="flex-row items-center"
             style={{
@@ -518,8 +594,6 @@ export default function HomeScreen() {
               style={{
                 width: headerActionSize,
                 height: headerActionSize,
-                minWidth: 34,
-                minHeight: 34,
               }}
               hitSlop={4}
             >
@@ -533,21 +607,45 @@ export default function HomeScreen() {
             {/* WISHLIST */}
 
             <Pressable
-              onPress={openShop}
+              onPress={openWishlist}
               className="items-center justify-center"
               style={{
                 width: headerActionSize,
                 height: headerActionSize,
-                minWidth: 34,
-                minHeight: 34,
               }}
               hitSlop={4}
             >
-              <Ionicons
-                name="heart-outline"
-                size={headerIconSize + 1}
-                color={COLORS.text}
-              />
+              <View className="relative items-center justify-center">
+                <Ionicons
+                  name={wishlistItems.length > 0 ? "heart" : "heart-outline"}
+                  size={headerIconSize + 1}
+                  color={COLORS.text}
+                />
+
+                {wishlistItems.length > 0 && (
+                  <View
+                    className="absolute items-center justify-center rounded-full"
+                    style={{
+                      right: -8,
+                      top: -6,
+                      minWidth: isSmallScreen ? 15 : 17,
+                      height: isSmallScreen ? 15 : 17,
+                      paddingHorizontal: 3,
+                      backgroundColor: COLORS.black,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: COLORS.white,
+                        fontSize: isSmallScreen ? 7 : 8,
+                        fontWeight: "700",
+                      }}
+                    >
+                      {wishlistItems.length > 99 ? "99+" : wishlistItems.length}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </Pressable>
 
             {/* CART */}
@@ -558,8 +656,6 @@ export default function HomeScreen() {
               style={{
                 width: headerActionSize,
                 height: headerActionSize,
-                minWidth: 34,
-                minHeight: 34,
               }}
               hitSlop={4}
             >
@@ -569,26 +665,29 @@ export default function HomeScreen() {
                 color={COLORS.text}
               />
 
-              <View
-                className="absolute items-center justify-center rounded-full"
-                style={{
-                  right: 0,
-                  top: 0,
-                  width: isSmallScreen ? 15 : 18,
-                  height: isSmallScreen ? 15 : 18,
-                  backgroundColor: COLORS.black,
-                }}
-              >
-                <Text
+              {totalCartItems > 0 && (
+                <View
+                  className="absolute items-center justify-center rounded-full"
                   style={{
-                    color: COLORS.white,
-                    fontSize: isSmallScreen ? 8 : 9,
-                    fontWeight: "700",
+                    right: 0,
+                    top: 0,
+                    minWidth: isSmallScreen ? 15 : 18,
+                    height: isSmallScreen ? 15 : 18,
+                    paddingHorizontal: 3,
+                    backgroundColor: COLORS.black,
                   }}
                 >
-                  3
-                </Text>
-              </View>
+                  <Text
+                    style={{
+                      color: COLORS.white,
+                      fontSize: isSmallScreen ? 8 : 9,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {totalCartItems > 99 ? "99+" : totalCartItems}
+                  </Text>
+                </View>
+              )}
             </Pressable>
           </View>
         </View>
@@ -635,7 +734,7 @@ export default function HomeScreen() {
         </Pressable>
 
         {/* =================================================
-            HERO BANNER
+            HERO
         ================================================= */}
 
         <FlatList
@@ -655,121 +754,27 @@ export default function HomeScreen() {
             >
               <Pressable
                 onPress={openShop}
-                className="relative overflow-hidden rounded-[22px]"
+                className="overflow-hidden rounded-[22px]"
                 style={{
+                  width: heroWidth,
                   height: heroHeight,
+                  backgroundColor: "#F4F4F4",
                 }}
               >
                 <Image
-                  source={{
-                    uri: item.image,
-                  }}
-                  className="absolute inset-0 h-full w-full"
-                  resizeMode="cover"
-                />
-
-                <View
-                  className="absolute inset-0"
+                  source={item.image}
                   style={{
-                    backgroundColor: "rgba(255,255,255,0.16)",
+                    width: "100%",
+                    height: "100%",
                   }}
+                  resizeMode="contain"
                 />
-
-                {/* HERO CONTENT */}
-
-                <View
-                  className="absolute"
-                  style={{
-                    left: heroWidth * 0.07,
-                    top: heroHeight * 0.11,
-                    maxWidth: heroWidth * 0.62,
-                  }}
-                >
-                  <Text
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.75}
-                    style={{
-                      color: "#222222",
-                      fontSize: isSmallScreen ? 9 : Math.min(width * 0.03, 12),
-                      letterSpacing: isSmallScreen
-                        ? 2.2
-                        : Math.min(width * 0.012, 4),
-                      fontWeight: "600",
-                    }}
-                  >
-                    {item.eyebrow}
-                  </Text>
-
-                  <Text
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.72}
-                    style={{
-                      color: "#111111",
-                      marginTop: isSmallScreen ? 8 : 14,
-                      fontSize: isSmallScreen ? 29 : Math.min(width * 0.09, 39),
-                      lineHeight: isSmallScreen
-                        ? 32
-                        : Math.min(width * 0.092, 41),
-                      fontWeight: "300",
-                    }}
-                  >
-                    {item.title}
-                  </Text>
-
-                  <Text
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.72}
-                    style={{
-                      color: "#333333",
-                      marginTop: isSmallScreen ? 8 : 13,
-                      fontSize: isSmallScreen
-                        ? 13
-                        : Math.min(width * 0.038, 16),
-                      lineHeight: isSmallScreen
-                        ? 17
-                        : Math.min(width * 0.052, 21),
-                    }}
-                  >
-                    {item.subtitle}
-                  </Text>
-
-                  {/* SHOP BUTTON */}
-
-                  <View
-                    className="mt-4 flex-row items-center rounded-full"
-                    style={{
-                      paddingHorizontal: isSmallScreen ? 14 : 19,
-                      paddingVertical: isSmallScreen ? 9 : 12,
-                      alignSelf: "flex-start",
-                      backgroundColor: COLORS.black,
-                      minHeight: 40,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: COLORS.white,
-                        fontSize: isSmallScreen ? 11 : 13,
-                        fontWeight: "600",
-                        marginRight: 7,
-                      }}
-                    >
-                      Shop Now
-                    </Text>
-
-                    <Ionicons
-                      name="arrow-forward"
-                      size={isSmallScreen ? 14 : 16}
-                      color={COLORS.white}
-                    />
-                  </View>
-                </View>
               </Pressable>
             </View>
           )}
         />
 
-        {/* HERO DOTS */}
+        {/* DOTS */}
 
         <View className="mt-3 flex-row items-center justify-center">
           {HERO_BANNERS.map((banner, index) => (
@@ -806,7 +811,7 @@ export default function HomeScreen() {
           {CATEGORIES.map((category) => (
             <Pressable
               key={category.id}
-              onPress={openShop}
+              onPress={() => openCategory(category.name)}
               className="items-center"
               style={{
                 width: categoryItemWidth,
@@ -844,7 +849,7 @@ export default function HomeScreen() {
         </ScrollView>
 
         {/* =================================================
-            PROMOTIONS
+            WHAT'S NEW
         ================================================= */}
 
         <SectionHeader
@@ -945,134 +950,229 @@ export default function HomeScreen() {
           horizontalPadding={horizontalPadding}
         />
 
-        <FlatList
-          data={PRODUCTS}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={{
-            paddingHorizontal: horizontalPadding,
-          }}
-          ItemSeparatorComponent={() => (
-            <View
-              style={{
-                width: isSmallScreen ? 10 : 14,
-              }}
-            />
-          )}
-          renderItem={({ item }) => {
-            const liked = wishlist.includes(item.id);
+        {loadingProducts ? (
+          <View
+            className="items-center justify-center"
+            style={{
+              minHeight: productImageHeight + 100,
+            }}
+          >
+            <ActivityIndicator size="small" color={COLORS.black} />
 
-            return (
-              <Pressable
-                onPress={() => openProduct(item.id)}
+            <Text
+              style={{
+                color: COLORS.muted,
+                fontSize: 12,
+                marginTop: 10,
+              }}
+            >
+              Loading products...
+            </Text>
+          </View>
+        ) : products.length === 0 ? (
+          <View
+            style={{
+              marginHorizontal: horizontalPadding,
+              paddingVertical: 30,
+              paddingHorizontal: 20,
+              borderWidth: 1,
+              borderColor: COLORS.border,
+              borderRadius: 18,
+              backgroundColor: COLORS.soft,
+            }}
+          >
+            <View className="items-center">
+              <Ionicons name="bag-outline" size={30} color={COLORS.secondary} />
+
+              <Text
                 style={{
-                  width: productWidth,
+                  color: COLORS.text,
+                  fontSize: 16,
+                  fontWeight: "700",
+                  marginTop: 10,
+                  textAlign: "center",
                 }}
               >
-                {/* PRODUCT IMAGE */}
+                No products available
+              </Text>
 
-                <View
-                  className="relative overflow-hidden rounded-[16px]"
-                  style={{
-                    backgroundColor: "#F4F4F4",
-                    width: productWidth,
-                    height: productImageHeight,
-                  }}
-                >
-                  <Image
-                    source={{
-                      uri: item.image,
-                    }}
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                    }}
-                    resizeMode="cover"
-                  />
+              <Text
+                style={{
+                  color: COLORS.secondary,
+                  fontSize: 12,
+                  marginTop: 5,
+                  textAlign: "center",
+                }}
+              >
+                {productError || "New products will appear here soon."}
+              </Text>
 
-                  {/* WISHLIST */}
-
-                  <Pressable
-                    onPress={(event) => {
-                      event.stopPropagation();
-                      toggleWishlist(item.id);
-                    }}
-                    className="absolute right-3 top-3 items-center justify-center rounded-full bg-white"
-                    style={{
-                      width: isSmallScreen ? 31 : 34,
-                      height: isSmallScreen ? 31 : 34,
-                    }}
-                    hitSlop={4}
-                  >
-                    <Ionicons
-                      name={liked ? "heart" : "heart-outline"}
-                      size={isSmallScreen ? 17 : 19}
-                      color={COLORS.text}
-                    />
-                  </Pressable>
-                </View>
-
-                {/* PRODUCT NAME */}
-
+              <Pressable
+                onPress={openShop}
+                className="mt-5 rounded-full px-6 py-3"
+                style={{
+                  backgroundColor: COLORS.black,
+                }}
+              >
                 <Text
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.75}
                   style={{
-                    color: COLORS.text,
-                    fontSize: isSmallScreen ? 13 : 14,
-                    fontWeight: "500",
-                    marginTop: 10,
+                    color: COLORS.white,
+                    fontSize: 12,
+                    fontWeight: "700",
                   }}
                 >
-                  {item.name}
+                  Browse Shop
                 </Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+          <FlatList
+            data={products.slice(0, 10)}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={{
+              paddingHorizontal: horizontalPadding,
+            }}
+            ItemSeparatorComponent={() => (
+              <View
+                style={{
+                  width: isSmallScreen ? 10 : 14,
+                }}
+              />
+            )}
+            renderItem={({ item }) => {
+              const liked = isProductWishlisted(item.id);
 
-                {/* PRICE */}
-
-                <View className="mt-1 flex-row items-center">
-                  <Text
+              return (
+                <Pressable
+                  onPress={() => openProduct(item.id)}
+                  style={{
+                    width: productWidth,
+                  }}
+                >
+                  <View
+                    className="relative overflow-hidden rounded-[16px]"
                     style={{
-                      color: COLORS.text,
-                      fontSize: isSmallScreen ? 14 : 15,
-                      fontWeight: "700",
+                      backgroundColor: "#F4F4F4",
+                      width: productWidth,
+                      height: productImageHeight,
                     }}
                   >
-                    ₹{item.price.toLocaleString("en-IN")}
-                  </Text>
+                    <Image
+                      source={{
+                        uri: item.image,
+                      }}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                      }}
+                      resizeMode="cover"
+                    />
+
+                    <Pressable
+                      onPress={(event) => {
+                        event.stopPropagation();
+                        handleWishlistToggle(item);
+                      }}
+                      className="absolute right-3 top-3 items-center justify-center rounded-full bg-white"
+                      style={{
+                        width: isSmallScreen ? 31 : 34,
+                        height: isSmallScreen ? 31 : 34,
+                        elevation: 2,
+                      }}
+                      hitSlop={4}
+                    >
+                      <Ionicons
+                        name={liked ? "heart" : "heart-outline"}
+                        size={isSmallScreen ? 17 : 19}
+                        color={COLORS.text}
+                      />
+                    </Pressable>
+
+                    {item.stock <= 0 && (
+                      <View className="absolute bottom-3 left-3 rounded-full bg-black/80 px-3 py-1.5">
+                        <Text className="text-[9px] font-bold text-white">
+                          OUT OF STOCK
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {item.brand ? (
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        color: COLORS.muted,
+                        fontSize: 10,
+                        fontWeight: "500",
+                        marginTop: 8,
+                        textTransform: "uppercase",
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      {item.brand}
+                    </Text>
+                  ) : null}
 
                   <Text
                     numberOfLines={1}
                     adjustsFontSizeToFit
-                    minimumFontScale={0.7}
+                    minimumFontScale={0.75}
                     style={{
-                      color: COLORS.muted,
-                      fontSize: 11,
-                      marginLeft: 6,
-                      textDecorationLine: "line-through",
+                      color: COLORS.text,
+                      fontSize: isSmallScreen ? 13 : 14,
+                      fontWeight: "500",
+                      marginTop: item.brand ? 3 : 10,
                     }}
                   >
-                    ₹{item.oldPrice.toLocaleString("en-IN")}
+                    {item.name}
                   </Text>
-                </View>
 
-                {/* DISCOUNT */}
+                  <View className="mt-1 flex-row items-center">
+                    <Text
+                      style={{
+                        color: COLORS.text,
+                        fontSize: isSmallScreen ? 14 : 15,
+                        fontWeight: "700",
+                      }}
+                    >
+                      ₹{item.price.toLocaleString("en-IN")}
+                    </Text>
 
-                <Text
-                  style={{
-                    color: COLORS.green,
-                    fontSize: isSmallScreen ? 11 : 12,
-                    fontWeight: "600",
-                    marginTop: 3,
-                  }}
-                >
-                  {item.discount}
-                </Text>
-              </Pressable>
-            );
-          }}
-        />
+                    {item.discountPercent > 0 && item.oldPrice > item.price && (
+                      <Text
+                        numberOfLines={1}
+                        style={{
+                          color: COLORS.muted,
+                          fontSize: 11,
+                          marginLeft: 6,
+                          textDecorationLine: "line-through",
+                        }}
+                      >
+                        ₹{item.oldPrice.toLocaleString("en-IN")}
+                      </Text>
+                    )}
+                  </View>
+
+                  {item.discount && (
+                    <Text
+                      style={{
+                        color: COLORS.green,
+                        fontSize: isSmallScreen ? 11 : 12,
+                        fontWeight: "600",
+                        marginTop: 3,
+                      }}
+                    >
+                      {item.discount}
+                    </Text>
+                  )}
+                </Pressable>
+              );
+            }}
+          />
+        )}
 
         {/* =================================================
             SHOP BY STYLE
@@ -1183,8 +1283,6 @@ export default function HomeScreen() {
               minHeight: isSmallScreen ? 82 : 96,
             }}
           >
-            {/* ICON */}
-
             <View
               className="items-center justify-center rounded-[17px] bg-white"
               style={{
@@ -1199,8 +1297,6 @@ export default function HomeScreen() {
                 color="#9B4DCA"
               />
             </View>
-
-            {/* TEXT */}
 
             <View
               className="flex-1"
@@ -1235,8 +1331,6 @@ export default function HomeScreen() {
               </Text>
             </View>
 
-            {/* BUTTON */}
-
             <View
               className="items-center justify-center rounded-full"
               style={{
@@ -1260,7 +1354,7 @@ export default function HomeScreen() {
         </Pressable>
 
         {/* =================================================
-            TRUST FEATURES
+            TRUST
         ================================================= */}
 
         <View
@@ -1283,7 +1377,7 @@ export default function HomeScreen() {
         </View>
 
         {/* =================================================
-            BOTTOM BRAND
+            BRAND
         ================================================= */}
 
         <View
