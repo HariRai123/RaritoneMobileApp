@@ -4,12 +4,15 @@
     "slug": "RaritoneMobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/raritone-logo.png",
     "scheme": "raritonemobile",
     "userInterfaceStyle": "automatic",
 
     "ios": {
-      "icon": "./assets/expo.icon"
+      "bundleIdentifier": "com.raritone.mobile",
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "icon": "./assets/images/raritone-logo.png",
+      "supportsTablet": true
     },
 
     "android": {

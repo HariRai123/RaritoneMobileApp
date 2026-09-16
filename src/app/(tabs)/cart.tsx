@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import {
+  Alert,
   Image,
   Pressable,
   ScrollView,
@@ -12,65 +13,139 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useCartStore } from "../../store/cartStore";
 
+const COLORS = {
+  black: "#111111",
+  white: "#FFFFFF",
+  text: "#111111",
+  secondary: "#666666",
+  muted: "#999999",
+  border: "#E8E8E8",
+  soft: "#F5F5F5",
+  green: "#16834A",
+  red: "#D92D20",
+  orange: "#B54708",
+};
+
 export default function CartScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
 
+  /* =======================================================
+     CART STORE
+  ======================================================= */
+
   const items = useCartStore((state) => state.items);
+
   const increaseQuantity = useCartStore((state) => state.increaseQuantity);
+
   const decreaseQuantity = useCartStore((state) => state.decreaseQuantity);
+
   const removeFromCart = useCartStore((state) => state.removeFromCart);
+
+  const clearCart = useCartStore((state) => state.clearCart);
+
   const getTotalItems = useCartStore((state) => state.getTotalItems);
+
   const getTotalPrice = useCartStore((state) => state.getTotalPrice);
 
-  // --------------------------------------------------
-  // RESPONSIVE
-  // --------------------------------------------------
+  /* =======================================================
+     RESPONSIVE
+  ======================================================= */
 
   const isSmallPhone = width < 360;
+
   const isPhone = width < 600;
+
   const isTablet = width >= 600;
 
-  const horizontalPadding = isSmallPhone
-    ? 16
-    : isPhone
-      ? 20
-      : isTablet
-        ? 32
-        : 48;
+  const horizontalPadding = isSmallPhone ? 16 : isPhone ? 20 : 32;
 
   const contentWidth = isTablet
     ? Math.min(width - horizontalPadding * 2, 1200)
     : width - horizontalPadding * 2;
 
-  const totalItems = getTotalItems();
-  const totalPrice = getTotalPrice();
+  /* =======================================================
+     TOTALS
+  ======================================================= */
 
-  // --------------------------------------------------
-  // GO TO CHECKOUT
-  // --------------------------------------------------
+  const totalItems = getTotalItems();
+
+  const subtotal = getTotalPrice();
+
+  const deliveryCharge = subtotal > 0 ? 0 : 0;
+
+  const total = subtotal + deliveryCharge;
+
+  /* =======================================================
+     FORMAT
+  ======================================================= */
+
+  const formatPrice = (value: number) => {
+    return `₹${Number(value).toLocaleString("en-IN")}`;
+  };
+
+  /* =======================================================
+     CHECKOUT
+  ======================================================= */
 
   const handleProceedToCheckout = () => {
+    if (items.length === 0) {
+      return;
+    }
+
     router.push("/checkout");
   };
 
-  // --------------------------------------------------
-  // EMPTY CART
-  // --------------------------------------------------
+  /* =======================================================
+     REMOVE ITEM
+  ======================================================= */
+
+  const handleRemove = (id: string, name: string) => {
+    Alert.alert("Remove item", `Remove "${name}" from your cart?`, [
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: () => removeFromCart(id),
+      },
+    ]);
+  };
+
+  /* =======================================================
+     CLEAR CART
+  ======================================================= */
+
+  const handleClearCart = () => {
+    Alert.alert("Clear cart", "Remove all items from your cart?", [
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: "Clear All",
+        style: "destructive",
+        onPress: clearCart,
+      },
+    ]);
+  };
+
+  /* =======================================================
+     EMPTY CART
+  ======================================================= */
 
   if (items.length === 0) {
     return (
       <SafeAreaView edges={["top", "bottom"]} className="flex-1 bg-white">
-        <View
-          className="flex-1 items-center justify-center"
-          style={{
-            paddingHorizontal: horizontalPadding,
-          }}
-        >
+        <View className="flex-1 items-center justify-center px-6">
           <View
-            className={`rounded-full bg-neutral-100 items-center justify-center ${
-              isSmallPhone ? "w-20 h-20" : "w-24 h-24"
-            }`}
+            className="items-center justify-center rounded-full bg-neutral-100"
+            style={{
+              width: isSmallPhone ? 80 : 96,
+              height: isSmallPhone ? 80 : 96,
+            }}
           >
             <Ionicons
               name="bag-outline"
@@ -80,7 +155,7 @@ export default function CartScreen() {
           </View>
 
           <Text
-            className="text-black font-bold text-center mt-6"
+            className="mt-6 text-center font-bold text-black"
             style={{
               fontSize: isSmallPhone ? 23 : 27,
             }}
@@ -88,32 +163,33 @@ export default function CartScreen() {
             Your cart is empty
           </Text>
 
-          <Text className="text-neutral-500 text-center mt-3 text-base leading-6 max-w-sm">
+          <Text className="mt-3 max-w-sm text-center text-base leading-6 text-neutral-500">
             Looks like you haven't added anything to your cart yet.
           </Text>
 
           <Pressable
-            className="bg-black rounded-full px-8 py-4 mt-8"
+            className="mt-8 rounded-full bg-black px-8 py-4"
             onPress={() => router.push("/(tabs)/shop")}
           >
-            <Text className="text-white font-bold">Start Shopping</Text>
+            <Text className="font-bold text-white">Start Shopping</Text>
           </Pressable>
         </View>
       </SafeAreaView>
     );
   }
 
-  // --------------------------------------------------
-  // CART
-  // --------------------------------------------------
+  /* =======================================================
+     CART
+  ======================================================= */
 
   return (
     <SafeAreaView edges={["top", "bottom"]} className="flex-1 bg-white">
       <ScrollView
         showsVerticalScrollIndicator={false}
+        contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={{
-          paddingBottom: 190,
           alignItems: "center",
+          paddingBottom: isTablet ? 60 : 180,
         }}
       >
         <View
@@ -122,232 +198,288 @@ export default function CartScreen() {
             paddingTop: isSmallPhone ? 16 : isPhone ? 20 : 28,
           }}
         >
-          {/* ========================================== */}
-          {/* HEADER */}
-          {/* ========================================== */}
+          {/* ===========================================
+              HEADER
+          =========================================== */}
 
-          <View className="mb-7">
-            <Text
-              className="text-black font-bold"
-              style={{
-                fontSize: isSmallPhone ? 28 : isPhone ? 31 : isTablet ? 38 : 42,
-              }}
+          <View className="mb-5 flex-row items-end justify-between">
+            <View className="flex-1">
+              <Text
+                className="font-bold text-black"
+                style={{
+                  fontSize: isSmallPhone ? 28 : isPhone ? 31 : 38,
+                }}
+              >
+                Your Cart
+              </Text>
+
+              <Text className="mt-2 text-neutral-500">
+                {totalItems} {totalItems === 1 ? "item" : "items"}
+              </Text>
+            </View>
+
+            {/* CLEAR */}
+
+            <Pressable
+              onPress={handleClearCart}
+              className="mb-1 ml-3 flex-row items-center rounded-full bg-neutral-100 px-3 py-2.5"
             >
-              Your Cart
-            </Text>
+              <Ionicons name="trash-outline" size={14} color="#666666" />
 
-            <Text className="text-neutral-500 mt-2">
-              {totalItems} {totalItems === 1 ? "item" : "items"}
-            </Text>
+              <Text className="ml-1.5 text-xs font-semibold text-neutral-600">
+                Clear
+              </Text>
+            </Pressable>
           </View>
 
-          {/* ========================================== */}
-          {/* CART ITEMS */}
-          {/* ========================================== */}
+          {/* ===========================================
+              CART ITEMS
+          =========================================== */}
 
           <View
             className={isTablet ? "flex-row flex-wrap justify-between" : ""}
           >
-            {items.map((item) => (
-              <View
-                key={item._id}
-                className={`bg-white border border-neutral-200 rounded-3xl p-4 mb-4 ${
-                  isTablet ? "w-[48.5%]" : "w-full"
-                }`}
-              >
-                <View className="flex-row">
-                  {/* PRODUCT IMAGE */}
+            {items.map((item) => {
+              const itemTotal = item.price * item.quantity;
 
-                  <Image
-                    source={{
-                      uri: item.image,
-                    }}
-                    className={`rounded-2xl bg-neutral-100 ${
-                      isSmallPhone
-                        ? "w-24 h-28"
-                        : isPhone
-                          ? "w-28 h-32"
-                          : "w-32 h-36"
-                    }`}
-                    resizeMode="cover"
-                  />
+              const isMaxQuantity = item.quantity >= item.stock;
 
-                  {/* PRODUCT INFO */}
+              return (
+                <View
+                  key={item._id}
+                  className={`mb-4 overflow-hidden rounded-3xl border border-neutral-200 bg-white p-4 ${
+                    isTablet ? "w-[48.5%]" : "w-full"
+                  }`}
+                >
+                  {/* =================================
+                        PRODUCT
+                    ================================= */}
 
-                  <View className="flex-1 ml-4">
-                    <View className="flex-row justify-between">
-                      <View className="flex-1 pr-2">
-                        <Text
-                          className="text-neutral-500 text-xs uppercase"
-                          numberOfLines={1}
-                          style={{
-                            letterSpacing: 1,
-                          }}
-                        >
-                          {item.brand}
-                        </Text>
+                  <View className="flex-row">
+                    {/* IMAGE */}
 
-                        <Text
-                          className="text-black font-semibold text-base mt-1"
-                          numberOfLines={2}
-                        >
-                          {item.name}
-                        </Text>
-                      </View>
+                    <Pressable
+                      onPress={() => router.push(`/product/${item._id}`)}
+                    >
+                      <Image
+                        source={{
+                          uri: item.image,
+                        }}
+                        className={
+                          isSmallPhone
+                            ? "h-28 w-24 rounded-2xl bg-neutral-100"
+                            : isPhone
+                              ? "h-32 w-28 rounded-2xl bg-neutral-100"
+                              : "h-36 w-32 rounded-2xl bg-neutral-100"
+                        }
+                        resizeMode="cover"
+                      />
+                    </Pressable>
 
-                      {/* REMOVE */}
+                    {/* INFO */}
 
-                      <Pressable
-                        onPress={() => removeFromCart(item._id)}
-                        hitSlop={8}
-                        className="w-9 h-9 rounded-full bg-neutral-100 items-center justify-center"
-                      >
-                        <Ionicons
-                          name="trash-outline"
-                          size={17}
-                          color="#737373"
-                        />
-                      </Pressable>
-                    </View>
+                    <View className="ml-4 flex-1">
+                      <View className="flex-row">
+                        <View className="min-w-0 flex-1 pr-2">
+                          <Text
+                            className="text-xs uppercase text-neutral-500"
+                            numberOfLines={1}
+                            style={{
+                              letterSpacing: 1,
+                            }}
+                          >
+                            {item.brand || "RARITONE"}
+                          </Text>
 
-                    {/* PRICE */}
+                          <Text
+                            className="mt-1 text-base font-semibold text-black"
+                            numberOfLines={2}
+                          >
+                            {item.name}
+                          </Text>
+                        </View>
 
-                    <Text className="text-black font-bold text-lg mt-4">
-                      ₹{item.price.toLocaleString("en-IN")}
-                    </Text>
-
-                    {/* QUANTITY */}
-
-                    <View className="flex-row items-center justify-between mt-4">
-                      <View className="flex-row items-center bg-neutral-100 rounded-full">
-                        <Pressable
-                          onPress={() => decreaseQuantity(item._id)}
-                          hitSlop={5}
-                          className="w-9 h-9 items-center justify-center"
-                        >
-                          <Ionicons name="remove" size={17} color="#111111" />
-                        </Pressable>
-
-                        <Text className="text-black font-semibold px-2">
-                          {item.quantity}
-                        </Text>
+                        {/* REMOVE */}
 
                         <Pressable
-                          onPress={() => increaseQuantity(item._id)}
-                          hitSlop={5}
-                          className="w-9 h-9 items-center justify-center"
+                          onPress={() => handleRemove(item._id, item.name)}
+                          hitSlop={8}
+                          className="h-9 w-9 items-center justify-center rounded-full bg-neutral-100"
                         >
-                          <Ionicons name="add" size={17} color="#111111" />
+                          <Ionicons
+                            name="trash-outline"
+                            size={17}
+                            color="#737373"
+                          />
                         </Pressable>
                       </View>
 
-                      {/* ITEM TOTAL */}
+                      {/* PRICE */}
 
-                      <Text className="text-neutral-600 text-sm font-medium">
-                        ₹{(item.price * item.quantity).toLocaleString("en-IN")}
+                      <Text className="mt-3 text-lg font-bold text-black">
+                        {formatPrice(item.price)}
                       </Text>
+
+                      {/* UNIT STOCK */}
+
+                      {item.stock <= 5 && (
+                        <Text
+                          className={`mt-1 text-xs font-medium ${
+                            item.stock === 0
+                              ? "text-red-600"
+                              : "text-orange-600"
+                          }`}
+                        >
+                          {item.stock === 0
+                            ? "Currently unavailable"
+                            : `Only ${item.stock} left`}
+                        </Text>
+                      )}
+
+                      {/* QUANTITY */}
+
+                      <View className="mt-3 flex-row items-center justify-between">
+                        <View className="flex-row items-center rounded-full bg-neutral-100">
+                          <Pressable
+                            onPress={() => decreaseQuantity(item._id)}
+                            hitSlop={5}
+                            className="h-9 w-9 items-center justify-center"
+                          >
+                            <Ionicons name="remove" size={17} color="#111111" />
+                          </Pressable>
+
+                          <Text className="min-w-[28px] px-1 text-center font-semibold text-black">
+                            {item.quantity}
+                          </Text>
+
+                          <Pressable
+                            onPress={() => increaseQuantity(item._id)}
+                            disabled={isMaxQuantity}
+                            hitSlop={5}
+                            className="h-9 w-9 items-center justify-center"
+                            style={{
+                              opacity: isMaxQuantity ? 0.35 : 1,
+                            }}
+                          >
+                            <Ionicons name="add" size={17} color="#111111" />
+                          </Pressable>
+                        </View>
+
+                        {/* ITEM TOTAL */}
+
+                        <Text className="ml-2 text-sm font-semibold text-neutral-700">
+                          {formatPrice(itemTotal)}
+                        </Text>
+                      </View>
                     </View>
                   </View>
                 </View>
-              </View>
-            ))}
+              );
+            })}
           </View>
 
-          {/* ========================================== */}
-          {/* ORDER SUMMARY */}
-          {/* ========================================== */}
+          {/* ===========================================
+              FREE DELIVERY
+          =========================================== */}
 
-          <View className="bg-neutral-50 border border-neutral-200 rounded-3xl p-5 mt-4">
-            <Text className="text-black text-xl font-bold mb-5">
+          <View className="mt-2 flex-row items-center rounded-2xl bg-green-50 px-4 py-3.5">
+            <View className="h-9 w-9 items-center justify-center rounded-full bg-green-100">
+              <Ionicons name="car-outline" size={18} color={COLORS.green} />
+            </View>
+
+            <View className="ml-3 flex-1">
+              <Text className="text-sm font-semibold text-green-800">
+                Free delivery
+              </Text>
+
+              <Text className="mt-1 text-xs text-green-700">
+                Enjoy free delivery on your order.
+              </Text>
+            </View>
+
+            <Ionicons name="checkmark-circle" size={21} color={COLORS.green} />
+          </View>
+
+          {/* ===========================================
+              ORDER SUMMARY
+          =========================================== */}
+
+          <View className="mt-5 rounded-3xl border border-neutral-200 bg-neutral-50 p-5">
+            <Text className="mb-5 text-xl font-bold text-black">
               Order Summary
             </Text>
 
             {/* ITEMS */}
 
-            <View className="flex-row justify-between mb-3">
+            <View className="mb-3 flex-row justify-between">
               <Text className="text-neutral-500">Items ({totalItems})</Text>
 
-              <Text className="text-neutral-800 font-medium">
-                ₹{totalPrice.toLocaleString("en-IN")}
+              <Text className="font-medium text-neutral-800">
+                {formatPrice(subtotal)}
               </Text>
             </View>
 
             {/* DELIVERY */}
 
-            <View className="flex-row justify-between mb-3">
+            <View className="mb-3 flex-row justify-between">
               <Text className="text-neutral-500">Delivery</Text>
 
-              <Text className="text-green-600 font-semibold">FREE</Text>
+              <Text className="font-semibold text-green-600">FREE</Text>
             </View>
 
             {/* DIVIDER */}
 
-            <View className="h-px bg-neutral-200 my-3" />
+            <View className="my-3 h-px bg-neutral-200" />
 
             {/* TOTAL */}
 
             <View className="flex-row justify-between">
-              <Text className="text-black text-lg font-bold">Total</Text>
+              <Text className="text-lg font-bold text-black">Total</Text>
 
-              <Text className="text-black text-xl font-bold">
-                ₹{totalPrice.toLocaleString("en-IN")}
+              <Text className="text-xl font-bold text-black">
+                {formatPrice(total)}
               </Text>
             </View>
 
             {/* CHECKOUT */}
-
-            <Pressable
-              className="bg-black rounded-full py-4 mt-6 items-center"
-              onPress={handleProceedToCheckout}
-            >
-              <View className="flex-row items-center">
-                <Text className="text-white font-bold text-base">
-                  Proceed to Checkout
-                </Text>
-
-                <Ionicons
-                  name="arrow-forward"
-                  size={18}
-                  color="white"
-                  style={{
-                    marginLeft: 8,
-                  }}
-                />
-              </View>
-            </Pressable>
           </View>
         </View>
       </ScrollView>
 
-      {/* ========================================== */}
-      {/* MOBILE STICKY CHECKOUT */}
-      {/* ========================================== */}
+      {/* =================================================
+          MOBILE STICKY CHECKOUT
+      ================================================= */}
 
       {!isTablet && (
-        <View className="absolute left-0 right-0 bottom-0 bg-white border-t border-neutral-200 px-5 pt-3 pb-3">
-          <View className="flex-row items-center justify-between mb-3">
+        <View
+          className="absolute bottom-0 left-0 right-0 border-t bg-white"
+          style={{
+            borderTopColor: COLORS.border,
+            paddingHorizontal: horizontalPadding,
+            paddingTop: 10,
+            paddingBottom: 10,
+          }}
+        >
+          <View className="mb-3 flex-row items-center justify-between">
             <View>
-              <Text className="text-neutral-500 text-xs">TOTAL</Text>
+              <Text className="text-xs text-neutral-500">TOTAL</Text>
 
-              <Text className="text-black text-xl font-bold mt-1">
-                ₹{totalPrice.toLocaleString("en-IN")}
+              <Text className="mt-1 text-xl font-bold text-black">
+                {formatPrice(total)}
               </Text>
             </View>
 
-            <Text className="text-neutral-500 text-sm">
+            <Text className="text-sm text-neutral-500">
               {totalItems} {totalItems === 1 ? "item" : "items"}
             </Text>
           </View>
 
           <Pressable
-            className="bg-black rounded-full items-center justify-center"
-            style={{
-              minHeight: 52,
-            }}
+            className="min-h-[52px] items-center justify-center rounded-full bg-black"
             onPress={handleProceedToCheckout}
           >
             <View className="flex-row items-center">
-              <Text className="text-white font-bold">Proceed to Checkout</Text>
+              <Text className="font-bold text-white">Proceed to Checkout</Text>
 
               <Ionicons
                 name="arrow-forward"

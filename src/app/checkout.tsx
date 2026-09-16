@@ -1,38 +1,76 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    Pressable,
-    ScrollView,
-    Text,
-    TextInput,
-    View,
-    useWindowDimensions,
+  ActivityIndicator,
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 import { auth } from "../config/firebase";
 import api from "../services/api";
 import { useCartStore } from "../store/cartStore";
 
+/* =========================================================
+   COLORS
+========================================================= */
+
+const COLORS = {
+  black: "#111111",
+  white: "#FFFFFF",
+  text: "#111111",
+  secondary: "#666666",
+  muted: "#999999",
+  border: "#E8E8E8",
+  soft: "#F5F5F5",
+  green: "#16834A",
+  red: "#D92D20",
+  orange: "#B54708",
+};
+
+/* =========================================================
+   SCREEN
+========================================================= */
+
 export default function CheckoutScreen() {
   const router = useRouter();
+
   const { width } = useWindowDimensions();
 
+  const insets = useSafeAreaInsets();
+
+  /* =======================================================
+     CART
+  ======================================================= */
+
   const items = useCartStore((state) => state.items);
+
   const getTotalItems = useCartStore((state) => state.getTotalItems);
+
   const getTotalPrice = useCartStore((state) => state.getTotalPrice);
+
   const clearCart = useCartStore((state) => state.clearCart);
 
-  // --------------------------------------------------
-  // RESPONSIVE
-  // --------------------------------------------------
+  /* =======================================================
+     RESPONSIVE
+  ======================================================= */
 
   const isSmallPhone = width < 360;
+
   const isPhone = width < 600;
+
   const isTablet = width >= 600;
 
   const horizontalPadding = isSmallPhone ? 16 : isPhone ? 20 : 32;
@@ -41,84 +79,146 @@ export default function CheckoutScreen() {
     ? Math.min(width - horizontalPadding * 2, 1200)
     : width - horizontalPadding * 2;
 
-  // --------------------------------------------------
-  // CART TOTALS
-  // --------------------------------------------------
+  /* =======================================================
+     STICKY BAR HEIGHT
+  ======================================================= */
+
+  const stickyBarHeight = Math.max(92, 78 + Math.max(insets.bottom, 10));
+
+  /* =======================================================
+     CART TOTALS
+  ======================================================= */
 
   const totalItems = getTotalItems();
+
   const subtotal = getTotalPrice();
 
   const deliveryCharge = 0;
+
   const totalPrice = subtotal + deliveryCharge;
 
-  // --------------------------------------------------
-  // FORM STATE
-  // --------------------------------------------------
+  /* =======================================================
+     FORM
+  ======================================================= */
 
   const [fullName, setFullName] = useState("");
+
   const [phone, setPhone] = useState("");
+
   const [address, setAddress] = useState("");
+
   const [city, setCity] = useState("");
+
   const [state, setState] = useState("");
+
   const [pincode, setPincode] = useState("");
+
+  /* =======================================================
+     ORDER STATE
+  ======================================================= */
 
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
 
-  // --------------------------------------------------
-  // EMPTY CART
-  // --------------------------------------------------
+  /* =======================================================
+     FORMAT PRICE
+  ======================================================= */
 
-  if (items.length === 0) {
-    return (
-      <SafeAreaView edges={["top", "bottom"]} className="flex-1 bg-white">
-        <View className="flex-1 items-center justify-center px-6">
-          <View className="w-20 h-20 rounded-full bg-neutral-100 items-center justify-center">
-            <Ionicons name="bag-outline" size={36} color="#737373" />
-          </View>
+  const formatPrice = useCallback((price: number) => {
+    return `₹${Number(price).toLocaleString("en-IN")}`;
+  }, []);
 
-          <Text className="text-black text-2xl font-bold mt-6 text-center">
-            Your cart is empty
-          </Text>
+  /* =======================================================
+     FORM VALIDATION
+  ======================================================= */
 
-          <Text className="text-neutral-500 text-center mt-3 leading-6">
-            Add some products before proceeding to checkout.
-          </Text>
+  const validateForm = useCallback(() => {
+    const trimmedName = fullName.trim();
 
-          <Pressable
-            onPress={() => router.replace("/(tabs)/shop")}
-            className="bg-black rounded-full px-8 py-4 mt-8"
-          >
-            <Text className="text-white font-bold">Continue Shopping</Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
-    );
-  }
+    const trimmedPhone = phone.trim();
 
-  // --------------------------------------------------
-  // PLACE ORDER
-  // --------------------------------------------------
+    const trimmedAddress = address.trim();
+
+    const trimmedCity = city.trim();
+
+    const trimmedState = state.trim();
+
+    const trimmedPincode = pincode.trim();
+
+    if (!trimmedName) {
+      Alert.alert("Missing Information", "Please enter your full name.");
+      return false;
+    }
+
+    const nameParts = trimmedName.split(/\s+/);
+
+    if (nameParts.length < 2) {
+      Alert.alert(
+        "Enter Full Name",
+        "Please enter both your first name and last name.",
+      );
+      return false;
+    }
+
+    if (!/^[6-9]\d{9}$/.test(trimmedPhone)) {
+      Alert.alert(
+        "Invalid Phone Number",
+        "Please enter a valid 10-digit Indian mobile number.",
+      );
+      return false;
+    }
+
+    if (!trimmedAddress) {
+      Alert.alert("Missing Address", "Please enter your delivery address.");
+      return false;
+    }
+
+    if (!trimmedCity) {
+      Alert.alert("Missing City", "Please enter your city.");
+      return false;
+    }
+
+    if (!trimmedState) {
+      Alert.alert("Missing State", "Please enter your state.");
+      return false;
+    }
+
+    if (!/^\d{6}$/.test(trimmedPincode)) {
+      Alert.alert("Invalid PIN Code", "Please enter a valid 6-digit PIN code.");
+      return false;
+    }
+
+    return true;
+  }, [fullName, phone, address, city, state, pincode]);
+
+  /* =======================================================
+     PLACE ORDER
+  ======================================================= */
 
   const handlePlaceOrder = async () => {
     if (isPlacingOrder) {
       return;
     }
 
+    if (items.length === 0) {
+      Alert.alert(
+        "Cart is Empty",
+        "Please add products before placing an order.",
+      );
+      return;
+    }
+
+    if (!validateForm()) {
+      return;
+    }
+
     try {
       setIsPlacingOrder(true);
 
-      // ------------------------------------------------
-      // 1. CHECK FIREBASE SESSION
-      // ------------------------------------------------
+      /* ================================================
+           FIREBASE AUTH
+        ================================================ */
 
       const firebaseUser = auth.currentUser;
-
-      console.log("====================================");
-      console.log("CHECKOUT AUTH DEBUG");
-      console.log("Firebase user exists:", !!firebaseUser);
-      console.log("Firebase UID:", firebaseUser?.uid);
-      console.log("Firebase email:", firebaseUser?.email);
-      console.log("====================================");
 
       if (!firebaseUser) {
         Alert.alert(
@@ -135,149 +235,69 @@ export default function CheckoutScreen() {
         return;
       }
 
-      // ------------------------------------------------
-      // 2. GET FRESH FIREBASE ID TOKEN
-      // ------------------------------------------------
-      //
-      // true forces Firebase to refresh the token if
-      // necessary.
-      //
+      /* ================================================
+           FIREBASE TOKEN
+        ================================================ */
 
       const firebaseToken = await firebaseUser.getIdToken(true);
 
-      console.log("Firebase token exists:", !!firebaseToken);
-
-      console.log("Firebase token length:", firebaseToken?.length);
-
       if (!firebaseToken) {
-        throw new Error("Unable to get Firebase authentication token");
+        throw new Error("Unable to get Firebase authentication token.");
       }
 
-      // ------------------------------------------------
-      // 3. VALIDATE EMAIL
-      // ------------------------------------------------
+      /* ================================================
+           EMAIL
+        ================================================ */
 
       const email = firebaseUser.email?.trim().toLowerCase();
 
       if (!email) {
         Alert.alert(
           "Email Required",
-          "Your Firebase account does not have an email address.",
+          "Your account does not have an email address.",
         );
 
         return;
       }
 
-      // ------------------------------------------------
-      // 4. VALIDATE FULL NAME
-      // ------------------------------------------------
+      /* ================================================
+           NAME
+        ================================================ */
 
       const trimmedName = fullName.trim();
 
-      if (!trimmedName) {
-        Alert.alert("Missing Information", "Please enter your full name.");
-
-        return;
-      }
-
       const nameParts = trimmedName.split(/\s+/);
-
-      if (nameParts.length < 2) {
-        Alert.alert(
-          "Enter Full Name",
-          "Please enter both your first name and last name.",
-        );
-
-        return;
-      }
 
       const firstName = nameParts[0];
 
       const lastName = nameParts.slice(1).join(" ");
 
-      // ------------------------------------------------
-      // 5. VALIDATE PHONE
-      // ------------------------------------------------
+      /* ================================================
+           ADDRESS
+        ================================================ */
 
       const trimmedPhone = phone.trim();
 
-      if (!/^[6-9]\d{9}$/.test(trimmedPhone)) {
-        Alert.alert(
-          "Invalid Phone Number",
-          "Please enter a valid 10-digit Indian mobile number.",
-        );
-
-        return;
-      }
-
-      // ------------------------------------------------
-      // 6. VALIDATE ADDRESS
-      // ------------------------------------------------
-
       const trimmedAddress = address.trim();
-
-      if (!trimmedAddress) {
-        Alert.alert("Missing Address", "Please enter your delivery address.");
-
-        return;
-      }
-
-      // ------------------------------------------------
-      // 7. VALIDATE CITY
-      // ------------------------------------------------
 
       const trimmedCity = city.trim();
 
-      if (!trimmedCity) {
-        Alert.alert("Missing City", "Please enter your city.");
-
-        return;
-      }
-
-      // ------------------------------------------------
-      // 8. VALIDATE STATE
-      // ------------------------------------------------
-
       const trimmedState = state.trim();
-
-      if (!trimmedState) {
-        Alert.alert("Missing State", "Please enter your state.");
-
-        return;
-      }
-
-      // ------------------------------------------------
-      // 9. VALIDATE PINCODE
-      // ------------------------------------------------
 
       const trimmedPincode = pincode.trim();
 
-      if (!/^\d{6}$/.test(trimmedPincode)) {
-        Alert.alert(
-          "Invalid PIN Code",
-          "Please enter a valid 6-digit PIN code.",
-        );
-
-        return;
-      }
-
-      // ------------------------------------------------
-      // 10. PREPARE ORDER ITEMS
-      // ------------------------------------------------
-      //
-      // Only productId + quantity are sent.
-      //
-      // Backend gets price/name/image from MongoDB.
-      //
+      /* ================================================
+           ORDER ITEMS
+        ================================================ */
 
       const orderItems = items.map((item) => ({
         productId: item.productId,
         quantity: item.quantity,
       }));
 
-      // ------------------------------------------------
-      // 11. PREPARE REQUEST
-      // ------------------------------------------------
+      /* ================================================
+           REQUEST
+        ================================================ */
 
       const orderData = {
         items: orderItems,
@@ -298,15 +318,9 @@ export default function CheckoutScreen() {
 
       console.log("ORDER REQUEST:", JSON.stringify(orderData, null, 2));
 
-      // ------------------------------------------------
-      // 12. SEND ORDER
-      // ------------------------------------------------
-      //
-      // api.ts automatically attaches:
-      //
-      // Authorization: Bearer <Firebase ID Token>
-      //
-      //
+      /* ================================================
+           BACKEND
+        ================================================ */
 
       const response = await api.post("/orders", orderData, {
         headers: {
@@ -316,33 +330,41 @@ export default function CheckoutScreen() {
 
       console.log("ORDER RESPONSE:", response.data);
 
-      // ------------------------------------------------
-      // 13. CHECK RESPONSE
-      // ------------------------------------------------
+      const createdOrder = response.data?.order;
 
-      if (!response.data?.order) {
-        throw new Error("Invalid order response from backend");
+      if (!createdOrder) {
+        throw new Error("Invalid order response from backend.");
       }
 
-      // ------------------------------------------------
-      // 14. CLEAR CART
-      // ------------------------------------------------
+      /* ================================================
+           CLEAR CART
+        ================================================ */
 
       clearCart();
 
-      // ------------------------------------------------
-      // 15. SUCCESS
-      // ------------------------------------------------
+      /* ================================================
+           SUCCESS
+        ================================================ */
+
+      const orderNumber =
+        createdOrder.orderNumber ||
+        createdOrder.orderId ||
+        createdOrder._id ||
+        "";
 
       Alert.alert(
         "Order Placed Successfully",
-        "Your order has been placed successfully.",
+        orderNumber
+          ? `Your order has been placed successfully.\n\nOrder ID: ${orderNumber}`
+          : "Your order has been placed successfully.",
         [
           {
+            text: "Continue Shopping",
+            onPress: () => router.replace("/(tabs)/shop"),
+          },
+          {
             text: "View Orders",
-            onPress: () => {
-              router.replace("/(tabs)/profile");
-            },
+            onPress: () => router.replace("/(tabs)/profile"),
           },
         ],
         {
@@ -350,17 +372,7 @@ export default function CheckoutScreen() {
         },
       );
     } catch (error: any) {
-      console.error("====================================");
-
-      console.error("PLACE ORDER ERROR");
-
-      console.error("Status:", error?.response?.status);
-
-      console.error("Backend response:", error?.response?.data);
-
-      console.error("Error message:", error?.message);
-
-      console.error("====================================");
+      console.error("PLACE ORDER ERROR:", error);
 
       const status = error?.response?.status;
 
@@ -369,9 +381,9 @@ export default function CheckoutScreen() {
         error?.message ||
         "Failed to place your order. Please try again.";
 
-      // ----------------------------------------------
-      // 401
-      // ----------------------------------------------
+      /* ================================================
+           401
+        ================================================ */
 
       if (status === 401) {
         message = "Your login session has expired. Please login again.";
@@ -379,42 +391,51 @@ export default function CheckoutScreen() {
         Alert.alert("Authentication Required", message, [
           {
             text: "Login",
-            onPress: () => {
-              router.replace("/login");
-            },
+            onPress: () => router.replace("/login"),
           },
         ]);
 
         return;
       }
 
-      // ----------------------------------------------
-      // 404
-      // ----------------------------------------------
+      /* ================================================
+           404
+        ================================================ */
 
       if (status === 404) {
         message =
-          error?.response?.data?.message || "Your account could not be found.";
+          error?.response?.data?.message ||
+          "Your account or order service could not be found.";
       }
 
-      // ----------------------------------------------
-      // 409
-      // ----------------------------------------------
+      /* ================================================
+           409
+        ================================================ */
 
       if (status === 409) {
         message =
           error?.response?.data?.message ||
-          "Stock changed while placing your order. Please try again.";
+          "Stock changed while placing your order. Please review your cart and try again.";
       }
 
-      // ----------------------------------------------
-      // 500
-      // ----------------------------------------------
+      /* ================================================
+           400
+        ================================================ */
+
+      if (status === 400) {
+        message =
+          error?.response?.data?.message ||
+          "Some order information is invalid. Please review your details.";
+      }
+
+      /* ================================================
+           500
+        ================================================ */
 
       if (status === 500) {
         message =
           error?.response?.data?.message ||
-          "Server error while placing your order.";
+          "Server error while placing your order. Please try again.";
       }
 
       Alert.alert("Unable to Place Order", message);
@@ -423,397 +444,622 @@ export default function CheckoutScreen() {
     }
   };
 
-  // --------------------------------------------------
-  // MAIN CHECKOUT
-  // --------------------------------------------------
+  /* =======================================================
+     EMPTY CART
+  ======================================================= */
+
+  if (items.length === 0) {
+    return (
+      <SafeAreaView edges={["top", "bottom"]} className="flex-1 bg-white">
+        <View className="flex-1 items-center justify-center px-6">
+          <View className="h-20 w-20 items-center justify-center rounded-full bg-neutral-100">
+            <Ionicons name="bag-outline" size={36} color="#737373" />
+          </View>
+
+          <Text className="mt-6 text-center text-2xl font-bold text-black">
+            Your cart is empty
+          </Text>
+
+          <Text className="mt-3 max-w-sm text-center leading-6 text-neutral-500">
+            Add some products before proceeding to checkout.
+          </Text>
+
+          <Pressable
+            onPress={() => router.replace("/(tabs)/shop")}
+            className="mt-8 rounded-full bg-black px-8 py-4"
+          >
+            <Text className="font-bold text-white">Continue Shopping</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  /* =======================================================
+     MAIN
+  ======================================================= */
 
   return (
-    <SafeAreaView edges={["top", "bottom"]} className="flex-1 bg-white">
-      {/* HEADER */}
+    <SafeAreaView edges={["top"]} className="flex-1 bg-white">
+      {/* ===================================================
+          HEADER
+      =================================================== */}
 
       <View
         className="flex-row items-center border-b border-neutral-200"
         style={{
           paddingHorizontal: horizontalPadding,
-          paddingVertical: 14,
+          paddingVertical: 12,
         }}
       >
         <Pressable
           onPress={() => router.back()}
           hitSlop={8}
-          className="w-10 h-10 rounded-full bg-neutral-100 items-center justify-center"
+          className="h-10 w-10 items-center justify-center rounded-full bg-neutral-100"
         >
           <Ionicons name="arrow-back" size={21} color="#111111" />
         </Pressable>
 
-        <Text className="text-black text-xl font-bold ml-4">Checkout</Text>
+        <View className="ml-4 flex-1">
+          <Text className="text-xl font-bold text-black">Checkout</Text>
+
+          <Text className="mt-0.5 text-xs text-neutral-400">
+            Secure order placement
+          </Text>
+        </View>
+
+        <View className="h-10 w-10 items-center justify-center rounded-full bg-neutral-100">
+          <Ionicons name="lock-closed-outline" size={18} color="#111111" />
+        </View>
       </View>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{
-          paddingBottom: 180,
-          alignItems: "center",
-        }}
+      {/* ===================================================
+          KEYBOARD AVOIDING
+      =================================================== */}
+
+      <KeyboardAvoidingView
+        className="flex-1"
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <View
-          style={{
-            width: contentWidth,
-            paddingTop: isSmallPhone ? 20 : isPhone ? 24 : 32,
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentInsetAdjustmentBehavior="automatic"
+          contentContainerStyle={{
+            alignItems: "center",
+
+            /*
+             * Reserve enough room for sticky
+             * bottom Place Order bar.
+             */
+            paddingBottom: isTablet ? 60 : stickyBarHeight + 35,
           }}
         >
-          {/* ========================================== */}
-          {/* DELIVERY ADDRESS */}
-          {/* ========================================== */}
+          <View
+            style={{
+              width: contentWidth,
+              paddingTop: isSmallPhone ? 20 : isPhone ? 24 : 32,
+            }}
+          >
+            {/* =============================================
+                PROGRESS
+            ============================================= */}
 
-          <View className="mb-7">
-            <View className="flex-row items-center justify-between mb-4">
-              <View className="flex-row items-center flex-1">
-                <View className="w-9 h-9 rounded-full bg-black items-center justify-center">
-                  <Ionicons name="location-outline" size={18} color="white" />
-                </View>
+            <View className="mb-7 flex-row items-center">
+              <CheckoutStep number="1" title="Details" active />
 
-                <Text className="text-black text-lg font-bold ml-3">
-                  Delivery Address
-                </Text>
-              </View>
+              <View className="mx-2 h-px flex-1 bg-neutral-200" />
 
-              <Text className="text-neutral-400 text-xs">REQUIRED</Text>
+              <CheckoutStep number="2" title="Payment" active />
+
+              <View className="mx-2 h-px flex-1 bg-neutral-200" />
+
+              <CheckoutStep number="3" title="Done" />
             </View>
 
-            <View className="border border-neutral-200 rounded-3xl p-5">
-              {/* FULL NAME */}
+            {/* =============================================
+                DELIVERY ADDRESS
+            ============================================= */}
 
-              <Text className="text-neutral-500 text-xs font-semibold mb-2">
-                FULL NAME
-              </Text>
-
-              <TextInput
-                placeholder="Enter your full name"
-                placeholderTextColor="#A3A3A3"
-                value={fullName}
-                onChangeText={setFullName}
-                autoCapitalize="words"
-                className="border border-neutral-200 rounded-2xl px-4 text-black"
-                style={{
-                  minHeight: 52,
-                }}
+            <View className="mb-7">
+              <SectionTitle
+                icon="location-outline"
+                title="Delivery Address"
+                subtitle="Where should we deliver your order?"
               />
 
-              {/* PHONE */}
+              <View className="rounded-3xl border border-neutral-200 p-5">
+                {/* FULL NAME */}
 
-              <Text className="text-neutral-500 text-xs font-semibold mt-5 mb-2">
-                PHONE NUMBER
-              </Text>
+                <InputLabel label="FULL NAME" />
 
-              <TextInput
-                placeholder="Enter your phone number"
-                placeholderTextColor="#A3A3A3"
-                value={phone}
-                onChangeText={setPhone}
-                keyboardType="phone-pad"
-                maxLength={10}
-                className="border border-neutral-200 rounded-2xl px-4 text-black"
-                style={{
-                  minHeight: 52,
-                }}
-              />
+                <TextInput
+                  placeholder="Enter your full name"
+                  placeholderTextColor="#A3A3A3"
+                  value={fullName}
+                  onChangeText={setFullName}
+                  autoCapitalize="words"
+                  returnKeyType="next"
+                  className="rounded-2xl border border-neutral-200 px-4 text-black"
+                  style={{
+                    minHeight: 52,
+                  }}
+                />
 
-              {/* ADDRESS */}
+                {/* PHONE */}
 
-              <Text className="text-neutral-500 text-xs font-semibold mt-5 mb-2">
-                ADDRESS
-              </Text>
+                <InputLabel label="PHONE NUMBER" marginTop />
 
-              <TextInput
-                placeholder="House / Flat / Street"
-                placeholderTextColor="#A3A3A3"
-                value={address}
-                onChangeText={setAddress}
-                multiline
-                textAlignVertical="top"
-                className="border border-neutral-200 rounded-2xl px-4 py-4 text-black"
-                style={{
-                  minHeight: 90,
-                }}
-              />
+                <TextInput
+                  placeholder="10-digit mobile number"
+                  placeholderTextColor="#A3A3A3"
+                  value={phone}
+                  onChangeText={(value) =>
+                    setPhone(value.replace(/[^0-9]/g, ""))
+                  }
+                  keyboardType="phone-pad"
+                  maxLength={10}
+                  returnKeyType="next"
+                  className="rounded-2xl border border-neutral-200 px-4 text-black"
+                  style={{
+                    minHeight: 52,
+                  }}
+                />
 
-              {/* CITY + STATE */}
+                {/* ADDRESS */}
 
-              <View className={isPhone ? "mt-5" : "flex-row mt-5"}>
+                <InputLabel label="ADDRESS" marginTop />
+
+                <TextInput
+                  placeholder="House / Flat / Street"
+                  placeholderTextColor="#A3A3A3"
+                  value={address}
+                  onChangeText={setAddress}
+                  multiline
+                  textAlignVertical="top"
+                  className="rounded-2xl border border-neutral-200 px-4 py-4 text-black"
+                  style={{
+                    minHeight: 95,
+                  }}
+                />
+
                 {/* CITY */}
 
-                <View className={isPhone ? "w-full" : "flex-1 mr-2"}>
-                  <Text className="text-neutral-500 text-xs font-semibold mb-2">
-                    CITY
-                  </Text>
+                <InputLabel label="CITY" marginTop />
 
-                  <TextInput
-                    placeholder="City"
-                    placeholderTextColor="#A3A3A3"
-                    value={city}
-                    onChangeText={setCity}
-                    autoCapitalize="words"
-                    className="border border-neutral-200 rounded-2xl px-4 text-black"
-                    style={{
-                      minHeight: 52,
-                    }}
-                  />
-                </View>
+                <TextInput
+                  placeholder="City"
+                  placeholderTextColor="#A3A3A3"
+                  value={city}
+                  onChangeText={setCity}
+                  autoCapitalize="words"
+                  returnKeyType="next"
+                  className="rounded-2xl border border-neutral-200 px-4 text-black"
+                  style={{
+                    minHeight: 52,
+                  }}
+                />
 
                 {/* STATE */}
 
-                <View className={isPhone ? "w-full mt-5" : "flex-1 ml-2"}>
-                  <Text className="text-neutral-500 text-xs font-semibold mb-2">
-                    STATE
-                  </Text>
+                <InputLabel label="STATE" marginTop />
 
-                  <TextInput
-                    placeholder="State"
-                    placeholderTextColor="#A3A3A3"
-                    value={state}
-                    onChangeText={setState}
-                    autoCapitalize="words"
-                    className="border border-neutral-200 rounded-2xl px-4 text-black"
-                    style={{
-                      minHeight: 52,
-                    }}
+                <TextInput
+                  placeholder="State"
+                  placeholderTextColor="#A3A3A3"
+                  value={state}
+                  onChangeText={setState}
+                  autoCapitalize="words"
+                  returnKeyType="next"
+                  className="rounded-2xl border border-neutral-200 px-4 text-black"
+                  style={{
+                    minHeight: 52,
+                  }}
+                />
+
+                {/* PIN */}
+
+                <InputLabel label="PIN CODE" marginTop />
+
+                <TextInput
+                  placeholder="6-digit PIN code"
+                  placeholderTextColor="#A3A3A3"
+                  value={pincode}
+                  onChangeText={(value) =>
+                    setPincode(value.replace(/[^0-9]/g, ""))
+                  }
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  returnKeyType="done"
+                  className="rounded-2xl border border-neutral-200 px-4 text-black"
+                  style={{
+                    minHeight: 52,
+                  }}
+                />
+
+                {/* SECURITY */}
+
+                <View className="mt-5 flex-row items-center rounded-2xl bg-neutral-50 px-4 py-3">
+                  <Ionicons
+                    name="shield-checkmark-outline"
+                    size={18}
+                    color={COLORS.green}
                   />
+
+                  <Text className="ml-2 flex-1 text-xs leading-5 text-neutral-500">
+                    Your delivery information is securely used only to process
+                    this order.
+                  </Text>
                 </View>
               </View>
+            </View>
 
-              {/* PIN */}
+            {/* =============================================
+                YOUR ITEMS
+            ============================================= */}
 
-              <Text className="text-neutral-500 text-xs font-semibold mt-5 mb-2">
-                PIN CODE
-              </Text>
-
-              <TextInput
-                placeholder="PIN code"
-                placeholderTextColor="#A3A3A3"
-                value={pincode}
-                onChangeText={setPincode}
-                keyboardType="number-pad"
-                maxLength={6}
-                className="border border-neutral-200 rounded-2xl px-4 text-black"
-                style={{
-                  minHeight: 52,
-                }}
+            <View className="mb-7">
+              <SectionTitle
+                icon="bag-outline"
+                title="Your Items"
+                subtitle={`${totalItems} ${
+                  totalItems === 1 ? "item" : "items"
+                } in your order`}
               />
-            </View>
-          </View>
 
-          {/* ========================================== */}
-          {/* ORDER ITEMS */}
-          {/* ========================================== */}
+              <View className="overflow-hidden rounded-3xl border border-neutral-200">
+                {items.map((item, index) => {
+                  const itemTotal = item.price * item.quantity;
 
-          <View className="mb-7">
-            <View className="flex-row items-center mb-4">
-              <View className="w-9 h-9 rounded-full bg-black items-center justify-center">
-                <Ionicons name="bag-outline" size={18} color="white" />
-              </View>
+                  return (
+                    <View
+                      key={item._id}
+                      className={`p-4 ${
+                        index < items.length - 1
+                          ? "border-b border-neutral-200"
+                          : ""
+                      }`}
+                    >
+                      <View className="flex-row items-center">
+                        <View className="h-24 w-20 overflow-hidden rounded-2xl bg-neutral-100">
+                          <Image
+                            source={{
+                              uri: item.image,
+                            }}
+                            className="h-full w-full"
+                            resizeMode="cover"
+                          />
+                        </View>
 
-              <Text className="text-black text-lg font-bold ml-3">
-                Your Items
-              </Text>
-            </View>
+                        <View className="ml-4 flex-1">
+                          <Text
+                            className="text-xs uppercase text-neutral-500"
+                            numberOfLines={1}
+                          >
+                            {item.brand || "RARITONE"}
+                          </Text>
 
-            <View className="border border-neutral-200 rounded-3xl overflow-hidden">
-              {items.map((item, index) => (
-                <View
-                  key={item._id}
-                  className={`p-4 ${
-                    index !== items.length - 1
-                      ? "border-b border-neutral-200"
-                      : ""
-                  }`}
-                >
-                  <View className="flex-row items-center">
-                    <View className="w-20 h-24 rounded-2xl overflow-hidden bg-neutral-100">
-                      <Image
-                        source={{
-                          uri: item.image,
-                        }}
-                        className="w-full h-full"
-                        resizeMode="cover"
-                      />
-                    </View>
+                          <Text
+                            className="mt-1 text-base font-semibold text-black"
+                            numberOfLines={2}
+                          >
+                            {item.name}
+                          </Text>
 
-                    <View className="flex-1 ml-4">
-                      <Text
-                        className="text-neutral-500 text-xs uppercase"
-                        numberOfLines={1}
-                      >
-                        {item.brand}
-                      </Text>
+                          <View className="mt-3 flex-row items-center justify-between">
+                            <View className="rounded-full bg-neutral-100 px-3 py-1.5">
+                              <Text className="text-xs font-semibold text-neutral-600">
+                                Qty: {item.quantity}
+                              </Text>
+                            </View>
 
-                      <Text
-                        className="text-black font-semibold text-base mt-1"
-                        numberOfLines={2}
-                      >
-                        {item.name}
-                      </Text>
-
-                      <View className="flex-row items-center justify-between mt-3">
-                        <Text className="text-neutral-500 text-sm">
-                          Qty: {item.quantity}
-                        </Text>
-
-                        <Text className="text-black font-bold">
-                          ₹
-                          {(item.price * item.quantity).toLocaleString("en-IN")}
-                        </Text>
+                            <Text className="font-bold text-black">
+                              {formatPrice(itemTotal)}
+                            </Text>
+                          </View>
+                        </View>
                       </View>
                     </View>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* =============================================
+                PAYMENT
+            ============================================= */}
+
+            <View className="mb-7">
+              <SectionTitle
+                icon="card-outline"
+                title="Payment Method"
+                subtitle="Choose how you'd like to pay"
+              />
+
+              {/* COD */}
+
+              <View className="rounded-3xl border border-black bg-white p-5">
+                <View className="flex-row items-center">
+                  <View className="h-11 w-11 items-center justify-center rounded-full bg-black">
+                    <Ionicons name="cash-outline" size={22} color="white" />
+                  </View>
+
+                  <View className="ml-4 flex-1">
+                    <Text className="font-bold text-black">
+                      Cash on Delivery
+                    </Text>
+
+                    <Text className="mt-1 text-sm text-neutral-500">
+                      Pay when your order arrives
+                    </Text>
+                  </View>
+
+                  <View className="h-6 w-6 items-center justify-center rounded-full bg-black">
+                    <Ionicons name="checkmark" size={15} color="white" />
                   </View>
                 </View>
-              ))}
-            </View>
-          </View>
 
-          {/* ========================================== */}
-          {/* PAYMENT METHOD */}
-          {/* ========================================== */}
+                <View className="mt-4 flex-row items-center rounded-2xl bg-neutral-50 px-3 py-3">
+                  <Ionicons
+                    name="information-circle-outline"
+                    size={17}
+                    color="#737373"
+                  />
 
-          <View className="mb-7">
-            <View className="flex-row items-center mb-4">
-              <View className="w-9 h-9 rounded-full bg-black items-center justify-center">
-                <Ionicons name="card-outline" size={18} color="white" />
-              </View>
-
-              <Text className="text-black text-lg font-bold ml-3">
-                Payment Method
-              </Text>
-            </View>
-
-            <View className="border border-neutral-900 rounded-3xl p-5">
-              <View className="flex-row items-center">
-                <View className="w-11 h-11 rounded-full bg-black items-center justify-center">
-                  <Ionicons name="cash-outline" size={22} color="white" />
-                </View>
-
-                <View className="flex-1 ml-4">
-                  <Text className="text-black font-bold">Cash on Delivery</Text>
-
-                  <Text className="text-neutral-500 text-sm mt-1">
-                    Pay when your order arrives
+                  <Text className="ml-2 flex-1 text-xs leading-5 text-neutral-500">
+                    Online payment will be available after the payment gateway
+                    is integrated.
                   </Text>
                 </View>
-
-                <View className="w-6 h-6 rounded-full bg-black items-center justify-center">
-                  <Ionicons name="checkmark" size={15} color="white" />
-                </View>
               </View>
             </View>
 
-            <Text className="text-neutral-400 text-xs mt-3 px-1 leading-5">
-              Online payment will be available once the payment gateway is
-              integrated.
-            </Text>
-          </View>
+            {/* =============================================
+                PRICE SUMMARY
+            ============================================= */}
 
-          {/* ========================================== */}
-          {/* PRICE SUMMARY */}
-          {/* ========================================== */}
-
-          <View className="bg-neutral-50 border border-neutral-200 rounded-3xl p-5">
-            <Text className="text-black text-xl font-bold mb-5">
-              Price Summary
-            </Text>
-
-            <View className="flex-row justify-between mb-3">
-              <Text className="text-neutral-500">Items ({totalItems})</Text>
-
-              <Text className="text-neutral-800 font-medium">
-                ₹{subtotal.toLocaleString("en-IN")}
+            <View className="rounded-3xl border border-neutral-200 bg-neutral-50 p-5">
+              <Text className="mb-5 text-xl font-bold text-black">
+                Price Summary
               </Text>
+
+              {/* ITEMS */}
+
+              <View className="mb-3 flex-row justify-between">
+                <Text className="text-neutral-500">Items ({totalItems})</Text>
+
+                <Text className="font-medium text-neutral-800">
+                  {formatPrice(subtotal)}
+                </Text>
+              </View>
+
+              {/* DELIVERY */}
+
+              <View className="mb-3 flex-row justify-between">
+                <Text className="text-neutral-500">Delivery</Text>
+
+                <Text className="font-semibold text-green-600">FREE</Text>
+              </View>
+
+              <View className="my-3 h-px bg-neutral-200" />
+
+              {/* TOTAL */}
+
+              <View className="flex-row justify-between">
+                <Text className="text-lg font-bold text-black">Total</Text>
+
+                <Text className="text-xl font-bold text-black">
+                  {formatPrice(totalPrice)}
+                </Text>
+              </View>
+
+              {/* COD NOTE */}
+
+              <View className="mt-4 flex-row items-center">
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={17}
+                  color={COLORS.green}
+                />
+
+                <Text className="ml-2 text-xs text-neutral-500">
+                  Free delivery • Cash on Delivery
+                </Text>
+              </View>
             </View>
 
-            <View className="flex-row justify-between mb-3">
-              <Text className="text-neutral-500">Delivery</Text>
+            {/* =============================================
+                MOBILE EXTRA SPACE
+            ============================================= */}
 
-              <Text className="text-green-600 font-semibold">FREE</Text>
-            </View>
-
-            <View className="h-px bg-neutral-200 my-3" />
-
-            <View className="flex-row justify-between">
-              <Text className="text-black text-lg font-bold">Total</Text>
-
-              <Text className="text-black text-xl font-bold">
-                ₹{totalPrice.toLocaleString("en-IN")}
-              </Text>
-            </View>
+            {!isTablet && (
+              <View
+                style={{
+                  height: stickyBarHeight + 25,
+                }}
+              />
+            )}
           </View>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
-      {/* ========================================== */}
-      {/* STICKY PLACE ORDER */}
-      {/* ========================================== */}
+      {/* ===================================================
+          STICKY PLACE ORDER
+      =================================================== */}
 
-      <View className="absolute left-0 right-0 bottom-0 bg-white border-t border-neutral-200">
+      <View
+        className="absolute bottom-0 left-0 right-0 bg-white"
+        style={{
+          borderTopWidth: 1,
+          borderTopColor: COLORS.border,
+          paddingHorizontal: horizontalPadding,
+          paddingTop: 10,
+          paddingBottom: Math.max(insets.bottom, 10),
+          minHeight: isTablet ? 78 : stickyBarHeight,
+          elevation: 14,
+          shadowColor: "#000000",
+          shadowOffset: {
+            width: 0,
+            height: -3,
+          },
+          shadowOpacity: 0.08,
+          shadowRadius: 8,
+        }}
+      >
         <View
+          className={
+            isTablet ? "mx-auto flex-row items-center" : "flex-row items-center"
+          }
           style={{
-            paddingHorizontal: horizontalPadding,
-            paddingTop: 12,
-            paddingBottom: 12,
+            width: isTablet ? Math.min(contentWidth, 700) : "100%",
           }}
         >
-          <View className="flex-row items-center justify-between mb-3">
-            <View>
-              <Text className="text-neutral-500 text-xs">TOTAL</Text>
+          {/* TOTAL */}
 
-              <Text className="text-black text-xl font-bold mt-1">
-                ₹{totalPrice.toLocaleString("en-IN")}
-              </Text>
-            </View>
+          <View className="mr-4">
+            <Text className="text-[10px] font-medium text-neutral-500">
+              TOTAL
+            </Text>
 
-            <Text className="text-neutral-500 text-sm">
-              {totalItems} {totalItems === 1 ? "item" : "items"}
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+              className="mt-1 text-xl font-bold text-black"
+            >
+              {formatPrice(totalPrice)}
             </Text>
           </View>
+
+          {/* PLACE ORDER */}
 
           <Pressable
             disabled={isPlacingOrder}
             onPress={handlePlaceOrder}
-            className={`rounded-full items-center justify-center ${
+            className={`flex-1 items-center justify-center rounded-full ${
               isPlacingOrder ? "bg-neutral-400" : "bg-black"
             }`}
             style={{
-              minHeight: 54,
+              minHeight: 52,
             }}
           >
-            <View className="flex-row items-center">
-              {isPlacingOrder ? (
-                <>
-                  <ActivityIndicator size="small" color="white" />
+            {isPlacingOrder ? (
+              <View className="flex-row items-center">
+                <ActivityIndicator size="small" color="white" />
 
-                  <Text className="text-white font-bold text-base ml-2">
-                    Placing Order...
-                  </Text>
-                </>
-              ) : (
-                <>
-                  <Text className="text-white font-bold text-base">
-                    Place Order
-                  </Text>
+                <Text className="ml-2 text-base font-bold text-white">
+                  Placing Order...
+                </Text>
+              </View>
+            ) : (
+              <View className="flex-row items-center">
+                <Text className="text-base font-bold text-white">
+                  Place Order
+                </Text>
 
-                  <Ionicons
-                    name="arrow-forward"
-                    size={18}
-                    color="white"
-                    style={{
-                      marginLeft: 8,
-                    }}
-                  />
-                </>
-              )}
-            </View>
+                <Ionicons
+                  name="arrow-forward"
+                  size={18}
+                  color="white"
+                  style={{
+                    marginLeft: 8,
+                  }}
+                />
+              </View>
+            )}
           </Pressable>
         </View>
       </View>
     </SafeAreaView>
+  );
+}
+
+/* =========================================================
+   CHECKOUT STEP
+========================================================= */
+
+function CheckoutStep({
+  number,
+  title,
+  active = false,
+}: {
+  number: string;
+  title: string;
+  active?: boolean;
+}) {
+  return (
+    <View className="items-center">
+      <View
+        className={`h-8 w-8 items-center justify-center rounded-full ${
+          active ? "bg-black" : "bg-neutral-100"
+        }`}
+      >
+        <Text
+          className={`text-xs font-bold ${
+            active ? "text-white" : "text-neutral-400"
+          }`}
+        >
+          {number}
+        </Text>
+      </View>
+
+      <Text
+        className={`mt-1 text-[9px] font-medium ${
+          active ? "text-black" : "text-neutral-400"
+        }`}
+      >
+        {title}
+      </Text>
+    </View>
+  );
+}
+
+/* =========================================================
+   SECTION TITLE
+========================================================= */
+
+function SectionTitle({
+  icon,
+  title,
+  subtitle,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <View className="mb-4 flex-row items-center">
+      <View className="h-9 w-9 items-center justify-center rounded-full bg-black">
+        <Ionicons name={icon} size={18} color="white" />
+      </View>
+
+      <View className="ml-3 flex-1">
+        <Text className="text-lg font-bold text-black">{title}</Text>
+
+        <Text className="mt-0.5 text-xs text-neutral-400">{subtitle}</Text>
+      </View>
+    </View>
+  );
+}
+
+/* =========================================================
+   INPUT LABEL
+========================================================= */
+
+function InputLabel({
+  label,
+  marginTop = false,
+}: {
+  label: string;
+  marginTop?: boolean;
+}) {
+  return (
+    <Text
+      className={`mb-2 text-xs font-semibold text-neutral-500 ${
+        marginTop ? "mt-5" : ""
+      }`}
+    >
+      {label}
+    </Text>
   );
 }

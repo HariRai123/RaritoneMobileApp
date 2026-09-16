@@ -1,5 +1,5 @@
 import { Stack, router, useSegments } from "expo-router";
-import { onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged, type User } from "firebase/auth";
 import { useEffect, useState } from "react";
 
 import { auth } from "../config/firebase";
@@ -12,7 +12,7 @@ export default function RootLayout() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, (user: User | null) => {
       setFirebaseUser(user);
       setLoading(false);
     });
