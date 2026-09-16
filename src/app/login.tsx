@@ -84,6 +84,30 @@ export default function LoginScreen() {
   const verticalBottomPadding = Math.max(insets.bottom + 24, 32);
 
   // --------------------------------------------------
+  // SAVE USER TO ZUSTAND
+  // --------------------------------------------------
+
+  const saveUserToStore = (backendUser: any) => {
+    setUser({
+      // FIX:
+      // Backend may return either "id" or "_id".
+      // Zustand requires id to always be a string.
+      id: backendUser.id || backendUser._id || "",
+
+      firebaseUid: backendUser.firebaseUid,
+      name: backendUser.name,
+      email: backendUser.email,
+      phone: backendUser.phone,
+      role: backendUser.role,
+      profileImage: backendUser.profileImage,
+      provider: backendUser.provider,
+      isActive: backendUser.isActive,
+      createdAt: backendUser.createdAt,
+      updatedAt: backendUser.updatedAt,
+    });
+  };
+
+  // --------------------------------------------------
   // EMAIL LOGIN
   // --------------------------------------------------
 
@@ -104,21 +128,8 @@ export default function LoginScreen() {
 
       const { backendUser } = await loginWithEmail(cleanEmail, password);
 
-      // IMPORTANT:
-      // Save backend user into Zustand.
-      setUser({
-        id: backendUser._id,
-        firebaseUid: backendUser.firebaseUid,
-        name: backendUser.name,
-        email: backendUser.email,
-        phone: backendUser.phone,
-        role: backendUser.role,
-        profileImage: backendUser.profileImage,
-        provider: backendUser.provider,
-        isActive: backendUser.isActive,
-        createdAt: backendUser.createdAt,
-        updatedAt: backendUser.updatedAt,
-      });
+      // Save authenticated backend user
+      saveUserToStore(backendUser);
 
       Alert.alert("Welcome Back", `Welcome, ${backendUser.name}!`, [
         {
@@ -185,21 +196,8 @@ export default function LoginScreen() {
 
       const { backendUser } = await loginWithGoogle();
 
-      // IMPORTANT:
-      // Save Google user into Zustand too.
-      setUser({
-        id: backendUser._id,
-        firebaseUid: backendUser.firebaseUid,
-        name: backendUser.name,
-        email: backendUser.email,
-        phone: backendUser.phone,
-        role: backendUser.role,
-        profileImage: backendUser.profileImage,
-        provider: backendUser.provider,
-        isActive: backendUser.isActive,
-        createdAt: backendUser.createdAt,
-        updatedAt: backendUser.updatedAt,
-      });
+      // Save Google user into Zustand
+      saveUserToStore(backendUser);
 
       Alert.alert("Welcome", `Welcome, ${backendUser.name}!`, [
         {
@@ -215,14 +213,29 @@ export default function LoginScreen() {
         error?.code || error?.message || error,
       );
 
-      // User cancelled Google sign-in.
+      // User cancelled Google sign-in
       if (error?.code === "SIGN_IN_CANCELLED" || error?.code === "12501") {
         return;
       }
 
       let message = "Unable to sign in with Google. Please try again.";
 
-      if (error?.code === "DEVELOPER_ERROR") {
+      const errorMessage = error?.message?.toLowerCase?.() || "";
+
+      // Backend does not have this Google account
+      if (
+        errorMessage.includes("user account not found") ||
+        errorMessage.includes("account not found")
+      ) {
+        message =
+          "No Raritone account exists for this Google account. Please create an account first.";
+      } else if (
+        errorMessage.includes("deactivated") ||
+        errorMessage.includes("disabled")
+      ) {
+        message =
+          "Your Raritone account has been deactivated. Please contact support.";
+      } else if (error?.code === "DEVELOPER_ERROR") {
         message =
           "Google Sign-In configuration is incorrect. Please check the Android SHA-1 and OAuth configuration.";
       } else if (error?.code === "PLAY_SERVICES_NOT_AVAILABLE") {
@@ -270,9 +283,9 @@ export default function LoginScreen() {
               justifyContent: height > 700 ? "center" : "flex-start",
             }}
           >
-            {/* ====================================== */}
-            {/* BRAND */}
-            {/* ====================================== */}
+            {/* ======================================
+                BRAND
+            ====================================== */}
 
             <View
               className="items-center"
@@ -301,9 +314,9 @@ export default function LoginScreen() {
               </Text>
             </View>
 
-            {/* ====================================== */}
-            {/* LOGIN CARD */}
-            {/* ====================================== */}
+            {/* ======================================
+                LOGIN CARD
+            ====================================== */}
 
             <View
               className="bg-white border border-neutral-200"
@@ -335,9 +348,9 @@ export default function LoginScreen() {
                 Sign in to continue shopping.
               </Text>
 
-              {/* ================================== */}
-              {/* EMAIL */}
-              {/* ================================== */}
+              {/* ==================================
+                  EMAIL
+              ================================== */}
 
               <Text className="text-neutral-700 text-sm mb-2">Email</Text>
 
@@ -373,9 +386,9 @@ export default function LoginScreen() {
                 </View>
               </View>
 
-              {/* ================================== */}
-              {/* PASSWORD */}
-              {/* ================================== */}
+              {/* ==================================
+                  PASSWORD
+              ================================== */}
 
               <Text className="text-neutral-700 text-sm mb-2 mt-5">
                 Password
@@ -422,9 +435,9 @@ export default function LoginScreen() {
                 </Pressable>
               </View>
 
-              {/* ================================== */}
-              {/* FORGOT PASSWORD */}
-              {/* ================================== */}
+              {/* ==================================
+                  FORGOT PASSWORD
+              ================================== */}
 
               <Pressable
                 disabled={loading}
@@ -434,15 +447,21 @@ export default function LoginScreen() {
                   paddingVertical: 4,
                   paddingHorizontal: 2,
                 }}
+                onPress={() => {
+                  Alert.alert(
+                    "Forgot Password",
+                    "Password reset will be available here.",
+                  );
+                }}
               >
                 <Text className="text-neutral-600 text-sm font-medium">
                   Forgot Password?
                 </Text>
               </Pressable>
 
-              {/* ================================== */}
-              {/* SIGN IN */}
-              {/* ================================== */}
+              {/* ==================================
+                  SIGN IN
+              ================================== */}
 
               <Pressable
                 onPress={handleLogin}
@@ -470,9 +489,9 @@ export default function LoginScreen() {
                 )}
               </Pressable>
 
-              {/* ================================== */}
-              {/* DIVIDER */}
-              {/* ================================== */}
+              {/* ==================================
+                  DIVIDER
+              ================================== */}
 
               <View
                 className="flex-row items-center"
@@ -487,9 +506,9 @@ export default function LoginScreen() {
                 <View className="flex-1 h-[1px] bg-neutral-200" />
               </View>
 
-              {/* ================================== */}
-              {/* GOOGLE LOGIN */}
-              {/* ================================== */}
+              {/* ==================================
+                  GOOGLE LOGIN
+              ================================== */}
 
               <Pressable
                 onPress={handleGoogleLogin}
@@ -523,9 +542,9 @@ export default function LoginScreen() {
                 </View>
               </Pressable>
 
-              {/* ================================== */}
-              {/* SIGN UP */}
-              {/* ================================== */}
+              {/* ==================================
+                  SIGN UP
+              ================================== */}
 
               <Pressable
                 disabled={loading}
@@ -549,9 +568,9 @@ export default function LoginScreen() {
               </Pressable>
             </View>
 
-            {/* ====================================== */}
-            {/* FOOTER */}
-            {/* ====================================== */}
+            {/* ======================================
+                FOOTER
+            ====================================== */}
 
             <View
               className="items-center"

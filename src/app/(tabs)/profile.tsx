@@ -1,10 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Pressable,
+  RefreshControl,
   ScrollView,
   Text,
   useWindowDimensions,
@@ -12,22 +13,54 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { auth } from "../../config/firebase";
 import { logoutFromFirebase } from "../../services/firebaseAuth";
 import { useAuthStore } from "../../store/authStore";
+
+const API_URL = "https://raritone-fullstack.onrender.com/api";
+
+type ProfileUser = {
+  id?: string;
+  _id?: string;
+  firebaseUid?: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  role?: "user" | "admin" | "vendor";
+  profileImage?: string;
+  provider?: "password" | "google" | "phone";
+  isActive?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
 
 export default function ProfileScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
 
-  const logout = useAuthStore((state) => state.logout);
+  // ==================================================
+  // ZUSTAND
+  // ==================================================
 
   const user = useAuthStore((state) => state.user);
 
+  const setUser = useAuthStore((state) => state.setUser);
+
+  const logout = useAuthStore((state) => state.logout);
+
+  // ==================================================
+  // LOCAL STATE
+  // ==================================================
+
   const [signingOut, setSigningOut] = useState(false);
 
-  /* ==========================================
-     RESPONSIVE
-  ========================================== */
+  const [loadingProfile, setLoadingProfile] = useState(true);
+
+  const [refreshing, setRefreshing] = useState(false);
+
+  // ==================================================
+  // RESPONSIVE
+  // ==================================================
 
   const isSmallPhone = width < 360;
   const isPhone = width < 600;
@@ -42,21 +75,216 @@ export default function ProfileScreen() {
         ? 48
         : 32;
 
-  /* ==========================================
-     USER INFO
-  ========================================== */
+  // ==================================================
+  // LOAD USER FROM BACKEND
+  // ==================================================
 
-  const displayName = user?.name || "Raritone User";
+  const loadProfile = useCallback(async () => {
+    try {
+      const firebaseUser = auth.currentUser;
 
-  const email = user?.email || "";
+      console.log("====================================");
 
-  const firstLetter = displayName.trim().charAt(0).toUpperCase() || "R";
+      console.log("PROFILE AUTH DEBUG");
 
-  /* ==========================================
-     SIGN OUT
-  ========================================== */
+      console.log("Firebase user exists:", !!firebaseUser);
+
+      console.log("Firebase UID:", firebaseUser?.uid);
+
+      console.log("Firebase name:", firebaseUser?.displayName);
+
+      console.log("Firebase email:", firebaseUser?.email);
+
+      console.log("====================================");
+
+      // ------------------------------------------------
+      // No Firebase user
+      // ------------------------------------------------
+
+      if (!firebaseUser) {
+        setLoadingProfile(false);
+        return;
+      }
+
+      // ------------------------------------------------
+      // Get fresh token
+      // ------------------------------------------------
+
+      const token = await firebaseUser.getIdToken(true);
+
+      // ------------------------------------------------
+      // Request backend profile
+      // ------------------------------------------------
+
+      const response = await fetch(`${API_URL}/auth/profile`, {
+        method: "GET",
+
+        headers: {
+          Authorization: `Bearer ${token}`,
+
+          Accept: "application/json",
+        },
+      });
+
+      let data: any = null;
+
+      try {
+        data = await response.json();
+      } catch {
+        data = null;
+      }
+
+      console.log("PROFILE API STATUS:", response.status);
+
+      console.log("PROFILE API RESPONSE:", data);
+
+      // ------------------------------------------------
+      // Backend profile available
+      // ------------------------------------------------
+
+      if (response.ok) {
+        const backendUser: ProfileUser = data?.user || data?.profile || data;
+
+        if (
+          backendUser &&
+          (backendUser.name || backendUser.email || backendUser.firebaseUid)
+        ) {
+          setUser({
+            id: backendUser.id || backendUser._id || firebaseUser.uid,
+
+            firebaseUid: backendUser.firebaseUid || firebaseUser.uid,
+
+            name:
+              backendUser.name || firebaseUser.displayName || "Raritone User",
+
+            email: backendUser.email || firebaseUser.email || "",
+
+            phone: backendUser.phone || firebaseUser.phoneNumber || "",
+
+            role: backendUser.role || "user",
+
+            profileImage:
+              backendUser.profileImage || firebaseUser.photoURL || "",
+
+            provider: backendUser.provider || "password",
+
+            isActive: backendUser.isActive ?? true,
+
+            createdAt: backendUser.createdAt,
+
+            updatedAt: backendUser.updatedAt,
+          });
+
+          setLoadingProfile(false);
+
+          return;
+        }
+      }
+
+      // ------------------------------------------------
+      // Backend failed, use Firebase as fallback
+      // ------------------------------------------------
+
+      console.log("Using Firebase profile fallback");
+
+      setUser({
+        id: firebaseUser.uid,
+
+        firebaseUid: firebaseUser.uid,
+
+        name: firebaseUser.displayName || "Raritone User",
+
+        email: firebaseUser.email || "",
+
+        phone: firebaseUser.phoneNumber || "",
+
+        role: "user",
+
+        profileImage: firebaseUser.photoURL || "",
+
+        provider: "google",
+
+        isActive: true,
+      });
+    } catch (error) {
+      console.error("PROFILE LOAD ERROR:", error);
+
+      // ------------------------------------------------
+      // Firebase fallback
+      // ------------------------------------------------
+
+      const firebaseUser = auth.currentUser;
+
+      if (firebaseUser) {
+        setUser({
+          id: firebaseUser.uid,
+
+          firebaseUid: firebaseUser.uid,
+
+          name: firebaseUser.displayName || "Raritone User",
+
+          email: firebaseUser.email || "",
+
+          phone: firebaseUser.phoneNumber || "",
+
+          role: "user",
+
+          profileImage: firebaseUser.photoURL || "",
+
+          provider: "google",
+
+          isActive: true,
+        });
+      }
+    } finally {
+      setLoadingProfile(false);
+    }
+  }, [setUser]);
+
+  // ==================================================
+  // LOAD ON SCREEN OPEN
+  // ==================================================
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
+
+  // ==================================================
+  // REFRESH
+  // ==================================================
+
+  const handleRefresh = async () => {
+    try {
+      setRefreshing(true);
+
+      await loadProfile();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // ==================================================
+  // USER DATA
+  // ==================================================
+
+  const displayName =
+    user?.name?.trim() ||
+    auth.currentUser?.displayName?.trim() ||
+    "Raritone User";
+
+  const email = user?.email || auth.currentUser?.email || "";
+
+  const firstLetter = displayName.charAt(0).toUpperCase() || "R";
+
+  // ==================================================
+  // SIGN OUT
+  // ==================================================
 
   const handleSignOut = () => {
+    if (signingOut) {
+      return;
+    }
+
     Alert.alert(
       "Sign Out",
       "Are you sure you want to sign out of your account?",
@@ -78,20 +306,11 @@ export default function ProfileScreen() {
     try {
       setSigningOut(true);
 
-      /*
-       * Firebase logout
-       */
       await logoutFromFirebase();
 
-      /*
-       * Clear Zustand auth state
-       */
       await logout();
 
-      /*
-       * Return to the main app
-       */
-      router.replace("/(tabs)");
+      router.replace("/login");
     } catch (error) {
       console.error("SIGN OUT ERROR:", error);
 
@@ -104,9 +323,9 @@ export default function ProfileScreen() {
     }
   };
 
-  /* ==========================================
-     MENU ITEM
-  ========================================== */
+  // ==================================================
+  // MENU ITEM
+  // ==================================================
 
   const MenuItem = ({
     icon,
@@ -124,7 +343,7 @@ export default function ProfileScreen() {
     return (
       <Pressable
         onPress={onPress}
-        disabled={signingOut}
+        disabled={signingOut || loadingProfile}
         android_ripple={{
           color: "#e5e5e5",
         }}
@@ -165,14 +384,21 @@ export default function ProfileScreen() {
     );
   };
 
-  /* ==========================================
-     SCREEN
-  ========================================== */
+  // ==================================================
+  // SCREEN
+  // ==================================================
 
   return (
     <SafeAreaView className="flex-1 bg-white" edges={["top", "left", "right"]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="#111111"
+          />
+        }
         contentContainerStyle={{
           paddingHorizontal: horizontalPadding,
           paddingTop: isTablet ? 32 : 20,
@@ -195,9 +421,7 @@ export default function ProfileScreen() {
               className={
                 isTablet
                   ? "text-black text-4xl font-bold"
-                  : isSmallPhone
-                    ? "text-black text-3xl font-bold"
-                    : "text-black text-3xl font-bold"
+                  : "text-black text-3xl font-bold"
               }
             >
               Profile
@@ -213,49 +437,63 @@ export default function ProfileScreen() {
           ===================================== */}
 
           <View className="rounded-3xl bg-black p-5">
-            <View className="flex-row items-center">
-              {/* AVATAR */}
+            {loadingProfile ? (
+              <View className="flex-row items-center py-4">
+                <View className="w-20 h-20 rounded-full bg-neutral-800 items-center justify-center">
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                </View>
 
-              <View
-                className={`rounded-full bg-white items-center justify-center ${
-                  isSmallPhone ? "w-16 h-16" : "w-20 h-20"
-                }`}
-              >
-                <Text
-                  className={
-                    isSmallPhone
-                      ? "text-black text-2xl font-bold"
-                      : "text-black text-3xl font-bold"
-                  }
-                >
-                  {firstLetter}
-                </Text>
+                <View className="flex-1 ml-4">
+                  <View className="h-5 w-40 rounded bg-neutral-800" />
+
+                  <View className="h-3 w-52 rounded bg-neutral-800 mt-3" />
+                </View>
               </View>
+            ) : (
+              <View className="flex-row items-center">
+                {/* AVATAR */}
 
-              {/* USER */}
-
-              <View className="flex-1 ml-4">
-                <Text
-                  className="text-white text-xl font-bold"
-                  numberOfLines={1}
+                <View
+                  className={`rounded-full bg-white items-center justify-center ${
+                    isSmallPhone ? "w-16 h-16" : "w-20 h-20"
+                  }`}
                 >
-                  {displayName}
-                </Text>
-
-                {email ? (
                   <Text
-                    className="text-neutral-400 text-sm mt-1"
+                    className={
+                      isSmallPhone
+                        ? "text-black text-2xl font-bold"
+                        : "text-black text-3xl font-bold"
+                    }
+                  >
+                    {firstLetter}
+                  </Text>
+                </View>
+
+                {/* USER */}
+
+                <View className="flex-1 ml-4">
+                  <Text
+                    className="text-white text-xl font-bold"
                     numberOfLines={1}
                   >
-                    {email}
+                    {displayName}
                   </Text>
-                ) : (
-                  <Text className="text-neutral-500 text-sm mt-1">
-                    Welcome to Raritone
-                  </Text>
-                )}
+
+                  {email ? (
+                    <Text
+                      className="text-neutral-400 text-sm mt-1"
+                      numberOfLines={1}
+                    >
+                      {email}
+                    </Text>
+                  ) : (
+                    <Text className="text-neutral-500 text-sm mt-1">
+                      Welcome to Raritone
+                    </Text>
+                  )}
+                </View>
               </View>
-            </View>
+            )}
 
             {/* ACCOUNT BADGE */}
 
@@ -291,8 +529,6 @@ export default function ProfileScreen() {
           </Text>
 
           <View className="rounded-3xl border border-neutral-200 bg-white px-4">
-            {/* ORDERS */}
-
             <MenuItem
               icon="receipt-outline"
               title="My Orders"
@@ -302,8 +538,6 @@ export default function ProfileScreen() {
 
             <View className="h-px bg-neutral-100" />
 
-            {/* TRY ON */}
-
             <MenuItem
               icon="sparkles-outline"
               title="Virtual Try-On"
@@ -312,8 +546,6 @@ export default function ProfileScreen() {
             />
 
             <View className="h-px bg-neutral-100" />
-
-            {/* HISTORY */}
 
             <MenuItem
               icon="time-outline"
@@ -360,7 +592,7 @@ export default function ProfileScreen() {
           </View>
 
           {/* =====================================
-              HELP
+              SUPPORT
           ===================================== */}
 
           <Text className="text-neutral-400 text-xs font-bold uppercase tracking-widest mt-8 mb-2">
@@ -410,7 +642,7 @@ export default function ProfileScreen() {
           </View>
 
           {/* =====================================
-              LOADING
+              SIGN OUT LOADING
           ===================================== */}
 
           {signingOut ? (

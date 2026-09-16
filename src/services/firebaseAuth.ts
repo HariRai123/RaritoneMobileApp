@@ -15,172 +15,224 @@ import {
 
 import { auth } from "../config/firebase";
 
+// ============================================================
+// CONFIG
+// ============================================================
+
 const API_URL = "https://raritone-fullstack.onrender.com/api";
 
 const GOOGLE_WEB_CLIENT_ID =
   "8520433775-bfc9slbl382o6gqja53bb4lmfc2n5jbs.apps.googleusercontent.com";
 
-/**
- * Configure Google Sign-In once when this module is loaded.
- *
- * webClientId is the Firebase OAuth 2.0 Web client ID.
- * It is used to obtain the Google ID token that is exchanged
- * for a Firebase credential.
- *
- * iOS-specific native configuration is supplied through
- * GoogleService-Info.plist in the Expo app configuration.
- */
 GoogleSignin.configure({
   webClientId: GOOGLE_WEB_CLIENT_ID,
 });
 
-/* -------------------------------------------------------------------------- */
-/* Types                                                                      */
-/* -------------------------------------------------------------------------- */
+// ============================================================
+// TYPES
+// ============================================================
 
 export type BackendUser = {
-  _id: string;
+  id?: string;
+  _id?: string;
+
   firebaseUid: string;
+
   name: string;
+
   email?: string;
+
   phone?: string;
+
   role: "user" | "admin" | "vendor";
+
   profileImage?: string;
+
   provider: "password" | "google" | "phone";
+
   isActive: boolean;
+
   createdAt?: string;
+
   updatedAt?: string;
 };
 
-type BackendSyncResponse = {
-  user?: BackendUser;
+type BackendResponse = {
   message?: string;
+  user?: BackendUser;
 };
 
-/* -------------------------------------------------------------------------- */
-/* Helper                                                                     */
-/* -------------------------------------------------------------------------- */
+// ============================================================
+// FIREBASE TOKEN
+// ============================================================
 
-/**
- * Synchronize the currently authenticated Firebase user
- * with the Raritone backend.
- *
- * Firebase automatically manages/refreshes the user's ID token.
- */
-export async function syncUserWithBackend(): Promise<BackendUser> {
+async function getFirebaseIdToken(): Promise<string> {
   const firebaseUser = auth.currentUser;
 
   if (!firebaseUser) {
-    throw new Error("No Firebase user is currently signed in");
+    throw new Error("No Firebase user is currently signed in.");
   }
 
-  const idToken = await firebaseUser.getIdToken();
+  return firebaseUser.getIdToken();
+}
+
+// ============================================================
+// EXISTING USER LOGIN SYNC
+// ============================================================
+
+export async function syncUserWithBackend(): Promise<BackendUser> {
+  const idToken = await getFirebaseIdToken();
 
   const response = await fetch(`${API_URL}/auth/sync`, {
     method: "POST",
+
     headers: {
       Authorization: `Bearer ${idToken}`,
+
       Accept: "application/json",
+
       "Content-Type": "application/json",
     },
   });
 
-  let data: BackendSyncResponse;
+  let data: BackendResponse;
 
   try {
-    data = (await response.json()) as BackendSyncResponse;
+    data = (await response.json()) as BackendResponse;
   } catch {
     throw new Error(
-      `Backend returned an invalid response (${response.status})`,
+      `Backend returned an invalid response (${response.status}).`,
     );
   }
 
-  if (!response.ok) {
-    console.error("Backend sync failed:", {
-      status: response.status,
-      data,
-    });
+  console.log("[Backend Sync]", {
+    status: response.status,
+    data,
+  });
 
-    throw new Error(data?.message || "Failed to synchronize user with backend");
+  if (!response.ok) {
+    throw new Error(
+      data?.message || "Failed to synchronize user with backend.",
+    );
   }
 
-  if (!data?.user) {
-    throw new Error("Backend sync response does not contain a user");
+  if (!data.user) {
+    throw new Error("Backend sync response does not contain a user.");
   }
 
   return data.user;
 }
 
-/* -------------------------------------------------------------------------- */
-/* Email Signup                                                               */
-/* -------------------------------------------------------------------------- */
+// ============================================================
+// NEW USER REGISTRATION
+// ============================================================
 
-/**
- * Sign up using Firebase email/password.
- */
+async function registerFirebaseUserWithBackend(): Promise<BackendUser> {
+  const idToken = await getFirebaseIdToken();
+
+  console.log("[Backend Registration] Calling /auth/register-firebase");
+
+  const response = await fetch(`${API_URL}/auth/register-firebase`, {
+    method: "POST",
+
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+
+      Accept: "application/json",
+
+      "Content-Type": "application/json",
+    },
+  });
+
+  let data: BackendResponse;
+
+  try {
+    data = (await response.json()) as BackendResponse;
+  } catch {
+    throw new Error(
+      `Backend returned an invalid response (${response.status}).`,
+    );
+  }
+
+  console.log("[Backend Registration]", {
+    status: response.status,
+    data,
+  });
+
+  if (!response.ok) {
+    throw new Error(data?.message || "Failed to register user with backend.");
+  }
+
+  if (!data.user) {
+    throw new Error("Backend registration response does not contain a user.");
+  }
+
+  return data.user;
+}
+
+// ============================================================
+// EMAIL SIGNUP
+// ============================================================
+
 export async function signupWithEmail(
   name: string,
   email: string,
   password: string,
-): Promise<{
-  firebaseUser: User;
-  backendUser: BackendUser;
-}> {
+) {
   const cleanName = name.trim();
+
   const cleanEmail = email.trim().toLowerCase();
 
   if (!cleanName) {
-    throw new Error("Name is required");
+    throw new Error("Name is required.");
   }
 
   if (!cleanEmail) {
-    throw new Error("Email is required");
+    throw new Error("Email is required.");
   }
 
   if (!password) {
-    throw new Error("Password is required");
+    throw new Error("Password is required.");
   }
 
-  const credential = await createUserWithEmailAndPassword(
-    auth,
-    cleanEmail,
-    password,
-  );
+  try {
+    const credential = await createUserWithEmailAndPassword(
+      auth,
+      cleanEmail,
+      password,
+    );
 
-  await updateProfile(credential.user, {
-    displayName: cleanName,
-  });
+    await updateProfile(credential.user, {
+      displayName: cleanName,
+    });
 
-  const backendUser = await syncUserWithBackend();
+    const backendUser = await registerFirebaseUserWithBackend();
 
-  return {
-    firebaseUser: credential.user,
-    backendUser,
-  };
+    return {
+      firebaseUser: credential.user,
+
+      backendUser,
+    };
+  } catch (error) {
+    console.error("[Email Signup] Error:", error);
+
+    throw error;
+  }
 }
 
-/* -------------------------------------------------------------------------- */
-/* Email Login                                                                */
-/* -------------------------------------------------------------------------- */
+// ============================================================
+// EMAIL LOGIN
+// ============================================================
 
-/**
- * Login using Firebase email/password.
- */
-export async function loginWithEmail(
-  email: string,
-  password: string,
-): Promise<{
-  firebaseUser: User;
-  backendUser: BackendUser;
-}> {
+export async function loginWithEmail(email: string, password: string) {
   const cleanEmail = email.trim().toLowerCase();
 
   if (!cleanEmail) {
-    throw new Error("Email is required");
+    throw new Error("Email is required.");
   }
 
   if (!password) {
-    throw new Error("Password is required");
+    throw new Error("Password is required.");
   }
 
   const credential = await signInWithEmailAndPassword(
@@ -193,100 +245,123 @@ export async function loginWithEmail(
 
   return {
     firebaseUser: credential.user,
+
     backendUser,
   };
 }
 
-/* -------------------------------------------------------------------------- */
-/* Google Login                                                               */
-/* -------------------------------------------------------------------------- */
+// ============================================================
+// GOOGLE FIREBASE USER
+// ============================================================
 
-/**
- * Sign in with Google.
- *
- * Works with the same Firebase authentication flow on Android and iOS.
- */
-export async function loginWithGoogle(): Promise<{
-  firebaseUser: User;
-  backendUser: BackendUser;
-}> {
+async function getGoogleFirebaseUser(): Promise<User> {
+  await GoogleSignin.hasPlayServices({
+    showPlayServicesUpdateDialog: true,
+  });
+
+  console.log("[Google] Starting sign in");
+
+  const response = await GoogleSignin.signIn();
+
+  if (!isSuccessResponse(response)) {
+    throw new Error("Google sign-in was cancelled.");
+  }
+
+  const { idToken } = response.data;
+
+  if (!idToken) {
+    throw new Error("Google Sign-In did not return an ID token.");
+  }
+
+  console.log("[Google] ID token received");
+
+  const googleCredential = GoogleAuthProvider.credential(idToken);
+
+  const firebaseCredential = await signInWithCredential(auth, googleCredential);
+
+  console.log("[Google] Firebase sign-in successful");
+
+  console.log("[Google] Firebase UID:", firebaseCredential.user.uid);
+
+  return firebaseCredential.user;
+}
+
+// ============================================================
+// GOOGLE LOGIN
+// EXISTING ACCOUNT ONLY
+// ============================================================
+
+export async function loginWithGoogle() {
   try {
-    /**
-     * Check Google Play Services on Android.
-     *
-     * On iOS this resolves without needing Google Play Services.
-     */
-    await GoogleSignin.hasPlayServices({
-      showPlayServicesUpdateDialog: true,
-    });
+    const firebaseUser = await getGoogleFirebaseUser();
 
-    const response = await GoogleSignin.signIn();
-
-    /**
-     * User cancelled Google sign-in.
-     */
-    if (!isSuccessResponse(response)) {
-      throw new Error("Google sign-in was cancelled");
-    }
-
-    const { idToken } = response.data;
-
-    if (!idToken) {
-      throw new Error("Google sign-in did not return an ID token");
-    }
-
-    /**
-     * Convert Google's ID token into a Firebase credential.
-     */
-    const googleCredential = GoogleAuthProvider.credential(idToken);
-
-    /**
-     * Sign the user into Firebase.
-     */
-    const firebaseCredential = await signInWithCredential(
-      auth,
-      googleCredential,
-    );
-
-    /**
-     * Synchronize the Firebase user with MongoDB.
-     */
     const backendUser = await syncUserWithBackend();
 
     return {
-      firebaseUser: firebaseCredential.user,
+      firebaseUser,
       backendUser,
     };
-  } catch (error: any) {
-    console.error("Google sign-in error:", error);
+  } catch (error) {
+    console.error("[Google Login] Error:", error);
 
-    /**
-     * Keep cancellation separate from actual errors.
-     */
-    if (error?.code === "SIGN_IN_CANCELLED" || error?.code === "12501") {
-      throw new Error("Google sign-in was cancelled");
+    // Firebase succeeded but Mongo account does not exist.
+    if (
+      error instanceof Error &&
+      error.message.toLowerCase().includes("user account not found")
+    ) {
+      try {
+        await GoogleSignin.signOut();
+      } catch {}
+
+      try {
+        await signOut(auth);
+      } catch {}
     }
 
-    throw error instanceof Error ? error : new Error("Google sign-in failed");
+    throw error instanceof Error ? error : new Error("Google login failed.");
   }
 }
 
-/* -------------------------------------------------------------------------- */
-/* Logout                                                                     */
-/* -------------------------------------------------------------------------- */
+// ============================================================
+// GOOGLE SIGNUP
+// NEW ACCOUNT
+// ============================================================
 
-/**
- * Logout from both Google and Firebase.
- */
+export async function signupWithGoogle() {
+  try {
+    console.log("[Google Signup] Starting");
+
+    const firebaseUser = await getGoogleFirebaseUser();
+
+    console.log("[Google Signup] Firebase authentication successful");
+
+    // IMPORTANT:
+    // This MUST call /auth/register-firebase.
+    const backendUser = await registerFirebaseUserWithBackend();
+
+    console.log("[Google Signup] MongoDB account created");
+
+    return {
+      firebaseUser,
+      backendUser,
+    };
+  } catch (error) {
+    console.error("[Google Signup] Error:", error);
+
+    throw error instanceof Error ? error : new Error("Google signup failed.");
+  }
+}
+
+// ============================================================
+// LOGOUT
+// ============================================================
+
 export async function logoutFromFirebase(): Promise<void> {
   try {
     await GoogleSignin.signOut();
-  } catch {
-    /**
-     * Google may not currently have a signed-in account.
-     * Firebase logout should still continue.
-     */
-  }
+  } catch {}
 
-  await signOut(auth);
+  try {
+    await signOut(auth);
+  } catch {}
 }
