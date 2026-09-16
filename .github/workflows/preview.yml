@@ -6,7 +6,7 @@ on:
       - develop
 
 jobs:
-  build-android:
+  build:
     name: Android Preview Build
     runs-on: ubuntu-latest
 
@@ -30,32 +30,5 @@ jobs:
 
       - name: Build Android Preview
         run: npx eas-cli@latest build --platform android --profile preview --non-interactive
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-
-  build-ios:
-    name: iOS Preview Build
-    runs-on: macos-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Verify Expo authentication
-        run: npx eas-cli@latest whoami
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-
-      - name: Build iOS Preview
-        run: npx eas-cli@latest build --platform ios --profile preview --non-interactive
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}

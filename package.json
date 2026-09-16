@@ -40,7 +40,6 @@
   "devDependencies": {
     "@react-native-community/cli": "^20.2.0",
     "@types/react": "~19.2.2",
-    "lightningcss-win32-x64-msvc": "^1.27.0",
     "tailwindcss": "3.4.17",
     "typescript": "~6.0.3"
   },
